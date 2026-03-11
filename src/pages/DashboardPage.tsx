@@ -92,7 +92,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
         <StatCard title="גבייה החודש" value={fmt(stats.monthlyAmount)} icon={CreditCard} />
         <StatCard title="גבייה השנה" value={fmt(stats.yearlyAmount)} icon={TrendingUp} />
         <StatCard title="תורמים" value={stats.donorCount} icon={Users} />
-        <StatCard title="הו"ק פעילות" value={stats.activeAuths} icon={FileText} />
+        <StatCard title={'הו"ק פעילות'} value={stats.activeAuths} icon={FileText} />
         <StatCard title="נכשלו" value={stats.failedDebits} icon={AlertTriangle} />
       </div>
 
