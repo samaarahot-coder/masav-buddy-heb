@@ -3,19 +3,20 @@ import { db } from '@/db/database';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 export function ReportsPage() {
   const [period, setPeriod] = useState<'month' | 'year'>('month');
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
-  const [summary, setSummary] = useState({ totalCollected: 0, totalDonors: 0, totalFailed: 0, avgAmount: 0 });
+  const [summary, setSummary] = useState({ totalCollected: 0, totalPending: 0, totalDonors: 0, totalFailed: 0, avgAmount: 0 });
 
   useEffect(() => { loadReports(); }, [period]);
 
   async function loadReports() {
     const collections = await db.collections.toArray();
+    const collectionItems = await db.collectionItems.toArray();
     const donors = await db.donors.toArray();
     const failed = await db.failedDebits.toArray();
 
@@ -23,28 +24,36 @@ export function ReportsPage() {
     const hebrewMonths = ['ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', 'יוני', 'יולי', 'אוג׳', 'ספט׳', 'אוק׳', 'נוב׳', 'דצמ׳'];
 
     if (period === 'month') {
-      const map = new Map<string, number>();
+      const map = new Map<string, { collected: number; pending: number }>();
       collections.forEach(c => {
         const d = new Date(c.date);
         if (d.getFullYear() === now.getFullYear()) {
           const key = hebrewMonths[d.getMonth()];
-          map.set(key, (map.get(key) || 0) + c.totalAmount);
+          const existing = map.get(key) || { collected: 0, pending: 0 };
+          if (c.status === 'collected') existing.collected += c.totalAmount;
+          else existing.pending += c.totalAmount;
+          map.set(key, existing);
         }
       });
-      setMonthlyData(hebrewMonths.map(m => ({ period: m, amount: map.get(m) || 0 })));
+      setMonthlyData(hebrewMonths.map(m => ({ period: m, collected: map.get(m)?.collected || 0, pending: map.get(m)?.pending || 0 })));
     } else {
-      const map = new Map<string, number>();
+      const map = new Map<string, { collected: number; pending: number }>();
       collections.forEach(c => {
         const year = new Date(c.date).getFullYear().toString();
-        map.set(year, (map.get(year) || 0) + c.totalAmount);
+        const existing = map.get(year) || { collected: 0, pending: 0 };
+        if (c.status === 'collected') existing.collected += c.totalAmount;
+        else existing.pending += c.totalAmount;
+        map.set(year, existing);
       });
-      setMonthlyData(Array.from(map.entries()).map(([period, amount]) => ({ period, amount })));
+      setMonthlyData(Array.from(map.entries()).map(([period, v]) => ({ period, ...v })));
     }
 
-    const totalCollected = collections.reduce((s, c) => s + c.totalAmount, 0);
+    const totalCollected = collectionItems.filter(i => i.status === 'collected').reduce((s, i) => s + i.amount, 0);
+    const totalPending = collectionItems.filter(i => i.status === 'pending').reduce((s, i) => s + i.amount, 0);
     const activeDonors = donors.filter(d => d.status === 'active').length;
     setSummary({
       totalCollected,
+      totalPending,
       totalDonors: activeDonors,
       totalFailed: failed.filter(f => !f.retried).length,
       avgAmount: activeDonors > 0 ? Math.round(donors.filter(d => d.status === 'active').reduce((s, d) => s + d.monthlyAmount, 0) / activeDonors) : 0,
@@ -52,7 +61,7 @@ export function ReportsPage() {
   }
 
   function exportReport() {
-    const data = monthlyData.map(d => ({ 'תקופה': d.period, 'סכום': d.amount }));
+    const data = monthlyData.map(d => ({ 'תקופה': d.period, 'נגבה': d.collected, 'ממתין': d.pending }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'דוח');
@@ -68,47 +77,47 @@ export function ReportsPage() {
 
   return (
     <div>
-      <PageHeader title="דוחות" description="דוחות וניתוח נתונים" actions={
-        <div className="flex gap-2">
+      <PageHeader title="דוחות" description="ניתוח נתונים" actions={
+        <div className="flex gap-1.5">
           <Select value={period} onValueChange={(v: any) => setPeriod(v)}>
-            <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-24 h-7 text-[11px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="month">חודשי</SelectItem>
               <SelectItem value="year">שנתי</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" variant="outline" onClick={exportReport} className="gap-1.5">
-            <Download size={14} /> יצוא
+          <Button size="sm" variant="outline" onClick={exportReport} className="gap-1 h-7 text-[11px]">
+            <Download size={12} /> יצוא
           </Button>
         </div>
       } />
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
         {[
-          { label: 'סה"כ נגבה', value: `₪${summary.totalCollected.toLocaleString()}` },
-          { label: 'תורמים פעילים', value: summary.totalDonors },
-          { label: 'החזרות ממתינות', value: summary.totalFailed },
-          { label: 'ממוצע לתורם', value: `₪${summary.avgAmount.toLocaleString()}` },
+          { label: 'נגבה', value: `₪${summary.totalCollected.toLocaleString()}`, cls: 'text-emerald-700' },
+          { label: 'ממתין לגבייה', value: `₪${summary.totalPending.toLocaleString()}`, cls: 'text-amber-700' },
+          { label: 'תורמים פעילים', value: summary.totalDonors, cls: '' },
+          { label: 'החזרות', value: summary.totalFailed, cls: '' },
+          { label: 'ממוצע לתורם', value: `₪${summary.avgAmount.toLocaleString()}`, cls: '' },
         ].map(s => (
-          <div key={s.label} className="bg-card rounded-xl border border-border/50 p-4">
-            <p className="text-xs text-muted-foreground mb-1">{s.label}</p>
-            <p className="text-xl font-bold">{s.value}</p>
+          <div key={s.label} className="bg-card rounded-lg border border-border p-3">
+            <p className="text-[10px] text-muted-foreground mb-1">{s.label}</p>
+            <p className={`text-base font-bold ${s.cls}`}>{s.value}</p>
           </div>
         ))}
       </div>
 
-      {/* Chart */}
-      <div className="bg-card rounded-xl border border-border/50 p-5">
-        <h2 className="text-sm font-semibold mb-4">גרף גבייה {period === 'month' ? 'חודשית' : 'שנתית'}</h2>
-        <div className="h-64">
+      <div className="bg-card rounded-lg border border-border p-3.5">
+        <h2 className="text-[11px] font-semibold mb-3">גרף גבייה {period === 'month' ? 'חודשית' : 'שנתית'}</h2>
+        <div className="h-52">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" />
-              <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(value: number) => [`₪${value.toLocaleString()}`, 'סכום']} />
-              <Bar dataKey="amount" fill="hsl(221 83% 53%)" radius={[6, 6, 0, 0]} />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 13% 91%)" />
+              <XAxis dataKey="period" tick={{ fontSize: 9 }} />
+              <YAxis tick={{ fontSize: 9 }} />
+              <Tooltip formatter={(value: number) => [`₪${value.toLocaleString()}`, '']} />
+              <Bar dataKey="collected" fill="hsl(152 55% 40%)" radius={[3, 3, 0, 0]} name="נגבה" stackId="a" />
+              <Bar dataKey="pending" fill="hsl(38 85% 48%)" radius={[3, 3, 0, 0]} name="ממתין" stackId="a" />
             </BarChart>
           </ResponsiveContainer>
         </div>
