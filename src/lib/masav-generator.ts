@@ -1,8 +1,9 @@
 import { type SystemSettings, type Donor } from '@/db/database';
 
 /**
- * MASAV File Generator - Based on official MASAV specification
- * Source: Bank Leumi / ACH (Automated Clearing House) technical spec
+ * MASAV Debit File Generator (חיובים / Get Payments)
+ * Based on official MASAV specification: Mifrat Hiuvim MSV
+ * Reference: https://github.com/ElishaMayer/masav
  * 
  * Record length: 128 bytes (Windows-1255 encoding) + CR LF (positions 129-130)
  * Encoding: Windows-1255 (1 byte per Hebrew character)
@@ -15,32 +16,24 @@ import { type SystemSettings, type Donor } from '@/db/database';
  */
 
 // ─── Windows-1255 Encoding Map ───────────────────────────────────────
-// Hebrew letters א-ת map to 0xE0-0xFA in Windows-1255
 const HEBREW_TO_WIN1255: Record<string, number> = {};
 for (let i = 0; i <= 26; i++) {
   HEBREW_TO_WIN1255[String.fromCharCode(0x05D0 + i)] = 0xE0 + i;
 }
-// Additional characters
-HEBREW_TO_WIN1255['־'] = 0x2D; // Hebrew maqaf → hyphen
-HEBREW_TO_WIN1255['׳'] = 0x27; // Hebrew geresh → apostrophe
-HEBREW_TO_WIN1255['״'] = 0x22; // Hebrew gershayim → quote
+HEBREW_TO_WIN1255['־'] = 0x2D;
+HEBREW_TO_WIN1255['׳'] = 0x27;
+HEBREW_TO_WIN1255['״'] = 0x22;
 
-/**
- * Encode a JavaScript string to Windows-1255 bytes
- */
 function encodeWin1255(str: string): Uint8Array {
   const bytes: number[] = [];
   for (let i = 0; i < str.length; i++) {
     const ch = str[i];
     const code = ch.charCodeAt(0);
-    
     if (HEBREW_TO_WIN1255[ch] !== undefined) {
       bytes.push(HEBREW_TO_WIN1255[ch]);
     } else if (code <= 0x7F) {
-      // Standard ASCII
       bytes.push(code);
     } else {
-      // Unknown character → space
       bytes.push(0x20);
     }
   }
@@ -59,10 +52,20 @@ function padLeft(str: string, len: number, char = '0'): string {
   return char.repeat(Math.max(0, len - s.length)) + s;
 }
 
-function formatAmount(amount: number): string {
-  // 13 chars total: 11 shekel digits + 2 agorot digits
-  const agorot = Math.round(Math.abs(amount) * 100);
-  return padLeft(agorot.toString(), 13, '0');
+function formatAmountTransaction(amount: number): string {
+  // Transaction: 11 shekel digits + 2 agorot digits = 13 chars total (pos 62-74)
+  const totalAgorot = Math.round(Math.abs(amount) * 100);
+  const shekel = Math.floor(totalAgorot / 100);
+  const agorot = totalAgorot % 100;
+  return padLeft(shekel.toString(), 11) + padLeft(agorot.toString(), 2);
+}
+
+function formatAmountSummary(amount: number): string {
+  // Summary: 13 shekel digits + 2 agorot digits = 15 chars total
+  const totalAgorot = Math.round(Math.abs(amount) * 100);
+  const shekel = Math.floor(totalAgorot / 100);
+  const agorot = totalAgorot % 100;
+  return padLeft(shekel.toString(), 13) + padLeft(agorot.toString(), 2);
 }
 
 function formatDateYYMMDD(dateStr: string): string {
@@ -155,89 +158,88 @@ export function validateDonorsForMasav(
 // ─── Record Builders ─────────────────────────────────────────────────
 
 /**
- * Header Record (K) - Spec section 3.1
+ * Header Record (K) - Same for both credit and debit files
  * 
  * Pos 1     (1)  Record ID = 'K'
- * Pos 2-9   (8)  Institution/subject code
- * Pos 10-11 (2)  Currency = '00'
- * Pos 12-17 (6)  Date of payment YYMMDD
- * Pos 18    (1)  Filler = '0'
- * Pos 19-21 (3)  Serial number = '001'
- * Pos 22    (1)  Filler = '0'
- * Pos 23-28 (6)  Date tape created YYMMDD
- * Pos 29-33 (5)  Sending institution number
- * Pos 34-39 (6)  Filler = zeros
- * Pos 40-69 (30) Name of institution
- * Pos 70-125(56) Filler = blanks
- * Pos 126-128(3) Header ID = 'KOT'
+ * Pos 2-9   (8)  Institution/subject code (N)
+ * Pos 10-11 (2)  Currency = '00' (N)
+ * Pos 12-17 (6)  Date of payment YYMMDD (N)
+ * Pos 18    (1)  Filler = '0' (N)
+ * Pos 19-21 (3)  Serial number = '001' (N)
+ * Pos 22    (1)  Filler = '0' (N)
+ * Pos 23-28 (6)  Date tape created YYMMDD (N)
+ * Pos 29-33 (5)  Sending institution number (N)
+ * Pos 34-39 (6)  Filler = zeros (N)
+ * Pos 40-69 (30) Name of institution (X, right-aligned)
+ * Pos 70-125(56) Filler = blanks (X)
+ * Pos 126-128(3) Header ID = 'KOT' (X)
  */
 function buildHeaderRecord(settings: SystemSettings, collectionDate: string): string {
   let rec = '';
-  rec += 'K';                                                          // 1:   Record ID
-  rec += padLeft(settings.masvInstitutionNumber, 8);                   // 2-9: Institution
-  rec += '00';                                                         // 10-11: Currency
-  rec += formatDateYYMMDD(collectionDate);                             // 12-17: Payment date
-  rec += '0';                                                          // 18: Filler
-  rec += '001';                                                        // 19-21: Serial
-  rec += '0';                                                          // 22: Filler
-  rec += formatDateYYMMDD(new Date().toISOString());                   // 23-28: Creation date
+  rec += 'K';                                                          // 1
+  rec += padLeft(settings.masvInstitutionNumber, 8);                   // 2-9
+  rec += '00';                                                         // 10-11
+  rec += formatDateYYMMDD(collectionDate);                             // 12-17
+  rec += '0';                                                          // 18
+  rec += '001';                                                        // 19-21
+  rec += '0';                                                          // 22
+  rec += formatDateYYMMDD(new Date().toISOString());                   // 23-28
   const sendingInst = settings.sendingInstitutionNumber || settings.masvInstitutionNumber;
-  rec += padLeft(sendingInst, 5);                                      // 29-33: Sending institution
-  rec += '000000';                                                     // 34-39: Filler
-  rec += padRight(settings.organizationName, 30);                      // 40-69: Name
-  rec += padRight('', 56);                                             // 70-125: Filler
-  rec += 'KOT';                                                        // 126-128: Header ID
+  rec += padLeft(sendingInst, 5);                                      // 29-33
+  rec += '000000';                                                     // 34-39
+  rec += padRight(settings.organizationName, 30);                      // 40-69
+  rec += padRight('', 56);                                             // 70-125
+  rec += 'KOT';                                                        // 126-128
   
-  // Ensure exactly 128 chars
   if (rec.length > 128) rec = rec.slice(0, 128);
   if (rec.length < 128) rec = rec + ' '.repeat(128 - rec.length);
   return rec;
 }
 
 /**
- * Movement Record (1) - Spec section 3.2
+ * Debit Movement Record - MASAV Get Payments (חיובים)
  * 
- * Pos 1     (1)  Record ID = '1'
- * Pos 2-9   (8)  Institution/subject
- * Pos 10-11 (2)  Currency = '00'
- * Pos 12-17 (6)  Filler = '000000'
- * Pos 18-19 (2)  Bank code
- * Pos 20-22 (3)  Branch number
- * Pos 23-26 (4)  Account type = '0000'
- * Pos 27-35 (9)  Account number
- * Pos 36    (1)  Filler = '0'
- * Pos 37-45 (9)  ID number
- * Pos 46-61 (16) Name of entitled
- * Pos 62-74 (13) Sum for payment (11 shekel + 2 agorot, must be > 0)
- * Pos 75-94 (20) Reference/ID of institution entitled
- * Pos 95-102(8)  Payment period (YYMM from YYMM)
- * Pos 103-105(3) Text code = '000'
- * Pos 106-108(3) Movement type = '006' (regular credit)
- * Pos 109-126(18) Filler = zeros
- * Pos 127-128(2) Filler = blanks
+ * Pos 1     (1)  Record ID = '1' (X)
+ * Pos 2-9   (8)  Institution/subject (N)
+ * Pos 10-11 (2)  Currency = '00' (N)
+ * Pos 12-17 (6)  Filler = '000000' (N)
+ * Pos 18-19 (2)  Bank code (N)
+ * Pos 20-22 (3)  Branch number (N)
+ * Pos 23-26 (4)  Account type = '0000' (N)
+ * Pos 27-35 (9)  Account number (N)
+ * Pos 36    (1)  Filler = '0' (N)
+ * Pos 37-45 (9)  ID number (N)
+ * Pos 46-61 (16) Name (X, right-aligned for Hebrew)
+ * Pos 62-74 (13) Amount: 11 shekel + 2 agorot (N)
+ * Pos 75-94 (20) Reference/payee number (N)
+ * Pos 95-102(8)  Payment period YYMM+YYMM (N)
+ * Pos 103-105(3) Text code = '000' (N)
+ * Pos 106-108(3) Movement type = '504' (DEBIT) (N)
+ * Pos 109-126(18) Filler = zeros (N)
+ * Pos 127-128(2) Filler = blanks (X)
  */
-function buildTransactionRecord(settings: SystemSettings, donor: Donor, collectionDate: string): string {
+function buildTransactionRecord(settings: SystemSettings, donor: Donor, _collectionDate: string): string {
   const period = getCurrentYYMM();
   
   let rec = '';
-  rec += '1';                                                          // 1: Record ID
-  rec += padLeft(settings.masvInstitutionNumber, 8);                   // 2-9: Institution
-  rec += '00';                                                         // 10-11: Currency
-  rec += '000000';                                                     // 12-17: Filler
-  rec += padLeft(donor.bankNumber, 2);                                 // 18-19: Bank
-  rec += padLeft(donor.branchNumber, 3);                               // 20-22: Branch
-  rec += '0000';                                                       // 23-26: Account type
-  rec += padLeft(donor.accountNumber, 9);                              // 27-35: Account
-  rec += '0';                                                          // 36: Filler
-  rec += padLeft(donor.idNumber || '0', 9);                            // 37-45: ID
-  rec += padRight(donor.fullName, 16);                                 // 46-61: Name
-  rec += formatAmount(donor.monthlyAmount);                            // 62-74: Amount
-  rec += padLeft(donor.authorizationNumber || '', 20);                 // 75-94: Reference
-  rec += period + period;                                              // 95-102: Period
-  rec += '000';                                                        // 103-105: Text code
-  rec += '006';                                                        // 106-108: Movement type
-  rec += padLeft('', 18, '0');                                         // 109-126: Filler
-  rec += '  ';                                                         // 127-128: Filler
+  rec += '1';                                                          // 1
+  rec += padLeft(settings.masvInstitutionNumber, 8);                   // 2-9
+  rec += '00';                                                         // 10-11
+  rec += '000000';                                                     // 12-17
+  rec += padLeft(donor.bankNumber, 2);                                 // 18-19
+  rec += padLeft(donor.branchNumber, 3);                               // 20-22
+  rec += '0000';                                                       // 23-26
+  rec += padLeft(donor.accountNumber, 9);                              // 27-35
+  rec += '0';                                                          // 36
+  rec += padLeft(donor.idNumber || '0', 9);                            // 37-45
+  rec += padRight(donor.fullName, 16);                                 // 46-61
+  rec += formatAmountTransaction(donor.monthlyAmount);                 // 62-74 (11+2=13)
+  rec += padLeft(donor.authorizationNumber || '', 20);                 // 75-94
+  rec += period + period;                                              // 95-102
+  rec += '000';                                                        // 103-105
+  rec += '504';                                                        // 106-108: DEBIT type (חיוב)
+  rec += padLeft('', 18, '0');                                         // 109-126
+  rec += '  ';                                                         // 127-128
   
   if (rec.length > 128) rec = rec.slice(0, 128);
   if (rec.length < 128) rec = rec + ' '.repeat(128 - rec.length);
@@ -245,19 +247,20 @@ function buildTransactionRecord(settings: SystemSettings, donor: Donor, collecti
 }
 
 /**
- * Totals Record (5) - Spec section 3.3
+ * Debit Summary Record (5) - Get Payments (חיובים)
+ * IMPORTANT: For debit files, positions 7&8 and 9&10 are SWAPPED vs credit files
  * 
- * Pos 1     (1)  Record ID = '5'
- * Pos 2-9   (8)  Institution/subject
- * Pos 10-11 (2)  Currency = '00'
- * Pos 12-17 (6)  Date of payment YYMMDD
- * Pos 18    (1)  Filler = '0'
- * Pos 19-21 (3)  Serial number = '001'
- * Pos 22-36 (15) Sum of movements (in agorot)
- * Pos 37-51 (15) Filler = zeros
- * Pos 52-58 (7)  Number of movements
- * Pos 59-65 (7)  Filler = zeros
- * Pos 66-128(63) Filler = blanks
+ * Pos 1     (1)  Record ID = '5' (X)
+ * Pos 2-9   (8)  Institution/subject (N)
+ * Pos 10-11 (2)  Currency = '00' (N)
+ * Pos 12-17 (6)  Date of payment YYMMDD (N)
+ * Pos 18    (1)  Filler = '0' (N)
+ * Pos 19-21 (3)  Serial number = '001' (N)
+ * Pos 22-36 (15) Filler = zeros (credits total, empty for debit file) (N)
+ * Pos 37-51 (15) Sum of debit movements: 13 shekel + 2 agorot (N)
+ * Pos 52-58 (7)  Filler = zeros (credit count, empty for debit file) (N)
+ * Pos 59-65 (7)  Number of debit movements (N)
+ * Pos 66-128(63) Filler = blanks (X)
  */
 function buildSummaryRecord(
   settings: SystemSettings,
@@ -266,17 +269,17 @@ function buildSummaryRecord(
   recordCount: number
 ): string {
   let rec = '';
-  rec += '5';                                                          // 1: Record ID
-  rec += padLeft(settings.masvInstitutionNumber, 8);                   // 2-9: Institution
-  rec += '00';                                                         // 10-11: Currency
-  rec += formatDateYYMMDD(collectionDate);                             // 12-17: Payment date
-  rec += '0';                                                          // 18: Filler
-  rec += '001';                                                        // 19-21: Serial
-  rec += padLeft(Math.round(totalAmount * 100).toString(), 15, '0');   // 22-36: Total amount
-  rec += padLeft('', 15, '0');                                         // 37-51: Filler
-  rec += padLeft(recordCount.toString(), 7, '0');                      // 52-58: Count
-  rec += padLeft('', 7, '0');                                          // 59-65: Filler
-  rec += padRight('', 63);                                             // 66-128: Filler
+  rec += '5';                                                          // 1
+  rec += padLeft(settings.masvInstitutionNumber, 8);                   // 2-9
+  rec += '00';                                                         // 10-11
+  rec += formatDateYYMMDD(collectionDate);                             // 12-17
+  rec += '0';                                                          // 18
+  rec += '001';                                                        // 19-21
+  rec += padLeft('', 15, '0');                                         // 22-36: Credits total = zeros (debit file)
+  rec += formatAmountSummary(totalAmount);                             // 37-51: Debits total (13 shekel + 2 agorot)
+  rec += padLeft('', 7, '0');                                          // 52-58: Credits count = zeros
+  rec += padLeft(recordCount.toString(), 7, '0');                      // 59-65: Debits count
+  rec += padRight('', 63);                                             // 66-128: Filler blanks
   
   if (rec.length > 128) rec = rec.slice(0, 128);
   if (rec.length < 128) rec = rec + ' '.repeat(128 - rec.length);
@@ -285,9 +288,6 @@ function buildSummaryRecord(
 
 // ─── Public API ──────────────────────────────────────────────────────
 
-/**
- * Generate MASAV preview records (for display, not file output)
- */
 export function generateMasavPreview(
   settings: SystemSettings,
   donors: Donor[],
@@ -316,14 +316,14 @@ export function generateMasavPreview(
       type: 'transaction',
       raw: buildTransactionRecord(settings, donor, collectionDate),
       fields: {
-        'סוג רשומה': '1 - תנועה',
+        'סוג רשומה': '1 - תנועה (חיוב)',
         'שם': donor.fullName,
         'בנק': padLeft(donor.bankNumber, 2),
         'סניף': padLeft(donor.branchNumber, 3),
         'חשבון': padLeft(donor.accountNumber, 9),
         'ת.ז.': padLeft(donor.idNumber, 9),
         'סכום': `₪${donor.monthlyAmount.toLocaleString()}`,
-        'סוג תנועה': '006 (זיכוי רגיל)',
+        'סוג תנועה': '504 (חיוב)',
       },
     });
   }
@@ -333,8 +333,8 @@ export function generateMasavPreview(
     raw: buildSummaryRecord(settings, collectionDate, totalAmount, donors.length),
     fields: {
       'סוג רשומה': '5 - סיכום',
-      'סה"כ סכום': `₪${totalAmount.toLocaleString()}`,
-      'מספר תנועות': donors.length.toString(),
+      'סה"כ חיובים': `₪${totalAmount.toLocaleString()}`,
+      'מספר תנועות חיוב': donors.length.toString(),
       'תאריך תשלום': collectionDate,
     },
   });
@@ -342,9 +342,6 @@ export function generateMasavPreview(
   return records;
 }
 
-/**
- * Generate the MASAV file as a properly encoded Windows-1255 Blob
- */
 export function generateMasavBlob(
   settings: SystemSettings,
   donors: Donor[],
@@ -363,15 +360,13 @@ export function generateMasavBlob(
   lines.push(buildSummaryRecord(settings, collectionDate, totalAmount, donors.length));
   lines.push('9'.repeat(128));
 
-  // Encode each line to Windows-1255 and join with CR+LF
   const encodedLines: Uint8Array[] = lines.map(line => encodeWin1255(line));
   const crlf = new Uint8Array([0x0D, 0x0A]);
   
-  // Calculate total size
   let totalSize = 0;
   for (let i = 0; i < encodedLines.length; i++) {
     totalSize += encodedLines[i].length;
-    if (i < encodedLines.length - 1) totalSize += 2; // CR+LF between lines
+    if (i < encodedLines.length - 1) totalSize += 2;
   }
   
   const result = new Uint8Array(totalSize);
@@ -388,9 +383,6 @@ export function generateMasavBlob(
   return new Blob([result], { type: 'application/octet-stream' });
 }
 
-/**
- * Legacy string-based generator (kept for backward compat, prefer generateMasavBlob)
- */
 export function generateMasavFile(
   settings: SystemSettings,
   donors: Donor[],
