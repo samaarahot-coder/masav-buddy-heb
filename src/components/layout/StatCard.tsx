@@ -10,16 +10,16 @@ interface StatCardProps {
 
 export function StatCard({ title, value, icon: Icon, trend, trendUp }: StatCardProps) {
   return (
-    <div className="bg-card rounded-lg p-5 stat-card-shadow border border-border animate-fade-in">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm text-muted-foreground font-medium">{title}</span>
-        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Icon size={18} className="text-primary" />
+    <div className="bg-card rounded-lg p-4 stat-card-shadow border border-border transition-shadow duration-200">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] text-muted-foreground font-medium">{title}</span>
+        <div className="w-7 h-7 rounded-md bg-primary/8 flex items-center justify-center">
+          <Icon size={14} className="text-primary" />
         </div>
       </div>
-      <div className="text-2xl font-bold text-foreground">{value}</div>
+      <div className="text-lg font-bold text-foreground">{value}</div>
       {trend && (
-        <div className={`text-xs mt-1 font-medium ${trendUp ? 'text-success' : 'text-destructive'}`}>
+        <div className={`text-[10px] mt-0.5 font-medium ${trendUp ? 'text-success' : 'text-destructive'}`}>
           {trend}
         </div>
       )}

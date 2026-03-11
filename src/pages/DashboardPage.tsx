@@ -52,16 +52,15 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
 
     setMonthlyData(hebrewMonths.map(m => ({ month: m, amount: monthlyMap.get(m) || 0 })));
 
-    // Donor status breakdown
     const active = donors.filter(d => d.status === 'active').length;
     const frozen = donors.filter(d => d.status === 'frozen').length;
     const cancelled = donors.filter(d => d.status === 'cancelled').length;
     const expired = donors.filter(d => d.status === 'expired').length;
     setStatusData([
-      { name: 'פעיל', value: active, color: 'hsl(142 71% 45%)' },
-      { name: 'מוקפא', value: frozen, color: 'hsl(38 92% 50%)' },
-      { name: 'מבוטל', value: cancelled, color: 'hsl(0 84% 60%)' },
-      { name: 'פג תוקף', value: expired, color: 'hsl(215 16% 47%)' },
+      { name: 'פעיל', value: active, color: 'hsl(152 60% 42%)' },
+      { name: 'מוקפא', value: frozen, color: 'hsl(38 90% 50%)' },
+      { name: 'מבוטל', value: cancelled, color: 'hsl(0 72% 55%)' },
+      { name: 'פג תוקף', value: expired, color: 'hsl(220 10% 46%)' },
     ].filter(d => d.value > 0));
 
     setStats({ monthlyAmount, yearlyAmount, donorCount: donors.length, activeAuths, failedDebits, pendingCollections });
@@ -73,55 +72,53 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
     <div>
       <PageHeader
         title="דשבורד"
-        description="סקירה כללית של המערכת"
+        description="סקירה כללית"
         actions={
-          <div className="flex gap-2">
-            <Button onClick={() => onNavigate('donors')} size="sm" className="gap-1.5">
-              <Plus size={15} /> הוסף תורם
+          <div className="flex gap-1.5">
+            <Button onClick={() => onNavigate('donors')} size="sm" className="gap-1 text-xs h-8">
+              <Plus size={13} /> תורם חדש
             </Button>
-            <Button onClick={() => onNavigate('import')} variant="outline" size="sm" className="gap-1.5">
-              <Upload size={15} /> ייבוא
+            <Button onClick={() => onNavigate('import')} variant="outline" size="sm" className="gap-1 text-xs h-8">
+              <Upload size={13} /> ייבוא
             </Button>
-            <Button onClick={() => onNavigate('collection')} variant="outline" size="sm" className="gap-1.5">
-              <Zap size={15} /> גבייה חדשה
+            <Button onClick={() => onNavigate('collection')} variant="outline" size="sm" className="gap-1 text-xs h-8">
+              <Zap size={13} /> גבייה
             </Button>
           </div>
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
         <StatCard title="גבייה החודש" value={fmt(stats.monthlyAmount)} icon={CreditCard} />
         <StatCard title="גבייה השנה" value={fmt(stats.yearlyAmount)} icon={TrendingUp} />
         <StatCard title="תורמים" value={stats.donorCount} icon={Users} />
-        <StatCard title="הוראות פעילות" value={stats.activeAuths} icon={FileText} />
-        <StatCard title="גביות שנכשלו" value={stats.failedDebits} icon={AlertTriangle} />
+        <StatCard title={'הו"ק פעילות'} value={stats.activeAuths} icon={FileText} />
+        <StatCard title="נכשלו" value={stats.failedDebits} icon={AlertTriangle} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Monthly chart */}
-        <div className="lg:col-span-2 bg-card rounded-xl border border-border/50 p-5">
-          <h2 className="text-sm font-semibold mb-4">גבייה חודשית</h2>
-          <div className="h-56">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="lg:col-span-2 bg-card rounded-lg border border-border p-4">
+          <h2 className="text-xs font-semibold mb-3 text-foreground">גבייה חודשית</h2>
+          <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 32% 91%)" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 90%)" />
+                <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip formatter={(value: number) => [`₪${value.toLocaleString()}`, 'סכום']} />
-                <Bar dataKey="amount" fill="hsl(221 83% 53%)" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="amount" fill="hsl(230 70% 56%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Status pie */}
-        <div className="bg-card rounded-xl border border-border/50 p-5">
-          <h2 className="text-sm font-semibold mb-4">סטטוס תורמים</h2>
+        <div className="bg-card rounded-lg border border-border p-4">
+          <h2 className="text-xs font-semibold mb-3 text-foreground">סטטוס תורמים</h2>
           {statusData.length > 0 ? (
-            <div className="h-56 flex items-center justify-center">
+            <div className="h-48 flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={statusData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, value }) => `${name} (${value})`}>
+                  <Pie data={statusData} cx="50%" cy="50%" outerRadius={70} dataKey="value" label={({ name, value }) => `${name} (${value})`} labelLine={false}>
                     {statusData.map((entry, i) => (
                       <Cell key={i} fill={entry.color} />
                     ))}
@@ -131,7 +128,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">אין נתונים</div>
+            <div className="h-48 flex items-center justify-center text-xs text-muted-foreground">אין נתונים</div>
           )}
         </div>
       </div>
