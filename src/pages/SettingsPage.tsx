@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 const defaultSettings: Omit<SystemSettings, 'id'> = {
   organizationName: '',
   masvInstitutionNumber: '',
+  sendingInstitutionNumber: '',
   creditBankNumber: '',
   creditBranchNumber: '',
   creditAccountNumber: '',
@@ -38,26 +39,30 @@ export function SettingsPage() {
   return (
     <div>
       <PageHeader title="הגדרות מערכת" description="הגדרות כלליות של המערכת" />
-      <div className="bg-card rounded-lg border border-border p-6 max-w-xl">
+      <div className="bg-card rounded-xl border border-border/50 p-6 max-w-xl">
         <div className="space-y-5">
           <div>
-            <Label>שם העמותה *</Label>
+            <Label className="text-xs">שם העמותה *</Label>
             <Input value={settings.organizationName} onChange={e => update('organizationName', e.target.value)} />
           </div>
           <div>
-            <Label>מספר מוסד מס"ב *</Label>
-            <Input value={settings.masvInstitutionNumber} onChange={e => update('masvInstitutionNumber', e.target.value)} />
+            <Label className="text-xs">מספר מוסד מס"ב (עד 8 ספרות) *</Label>
+            <Input value={settings.masvInstitutionNumber} onChange={e => update('masvInstitutionNumber', e.target.value)} maxLength={8} />
           </div>
-          <div className="border-t border-border pt-5 mt-5">
-            <h3 className="font-semibold text-sm mb-4">חשבון בנק לזיכוי</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div><Label>מספר בנק</Label><Input value={settings.creditBankNumber} onChange={e => update('creditBankNumber', e.target.value)} /></div>
-              <div><Label>מספר סניף</Label><Input value={settings.creditBranchNumber} onChange={e => update('creditBranchNumber', e.target.value)} /></div>
-              <div><Label>מספר חשבון</Label><Input value={settings.creditAccountNumber} onChange={e => update('creditAccountNumber', e.target.value)} /></div>
+          <div>
+            <Label className="text-xs">מספר מוסד שולח (5 ספרות, אם שונה)</Label>
+            <Input value={settings.sendingInstitutionNumber} onChange={e => update('sendingInstitutionNumber', e.target.value)} maxLength={5} />
+          </div>
+          <div className="border-t pt-5">
+            <h3 className="text-sm font-semibold mb-4">חשבון בנק לזיכוי</h3>
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label className="text-xs">מספר בנק</Label><Input value={settings.creditBankNumber} onChange={e => update('creditBankNumber', e.target.value)} /></div>
+              <div><Label className="text-xs">מספר סניף</Label><Input value={settings.creditBranchNumber} onChange={e => update('creditBranchNumber', e.target.value)} /></div>
+              <div><Label className="text-xs">מספר חשבון</Label><Input value={settings.creditAccountNumber} onChange={e => update('creditAccountNumber', e.target.value)} /></div>
             </div>
           </div>
           <div>
-            <Label>יום גבייה ברירת מחדל</Label>
+            <Label className="text-xs">יום גבייה ברירת מחדל</Label>
             <Input type="number" min={1} max={28} value={settings.defaultChargeDay} onChange={e => update('defaultChargeDay', Number(e.target.value))} className="w-24" />
           </div>
           <Button onClick={save}>שמור הגדרות</Button>
