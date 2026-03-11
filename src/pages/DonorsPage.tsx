@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { db, type Donor, type Bank, type Branch, type DonorGroup, logActivity } from '@/db/database';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Plus, Search, Edit, Trash2, Eye, Ban, PlayCircle } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Plus, Search, Edit, Trash2, Eye, Ban, PlayCircle, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 const emptyDonor: Omit<Donor, 'id'> = {
@@ -17,6 +18,100 @@ const emptyDonor: Omit<Donor, 'id'> = {
   endDate: '', monthCount: 0, monthsCollected: 0, lastCollectedDate: '',
   status: 'active', groupId: null, createdAt: '', updatedAt: '',
 };
+
+// Searchable bank/branch selector component
+function BankSelector({ banks, value, onChange, placeholder }: { banks: Bank[]; value: string; onChange: (v: string) => void; placeholder: string }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(() => {
+    if (!search) return banks.slice(0, 80);
+    return banks.filter(b => b.bankName.includes(search) || b.bankNumber.includes(search)).slice(0, 80);
+  }, [banks, search]);
+  const selected = banks.find(b => b.bankNumber === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="w-full flex items-center justify-between h-9 px-3 text-sm border border-input rounded-md bg-background hover:bg-muted/30 transition-colors text-right">
+          <span className={selected ? 'text-foreground' : 'text-muted-foreground'}>
+            {selected ? `${selected.bankNumber} - ${selected.bankName}` : placeholder}
+          </span>
+          <ChevronDown size={12} className="text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[280px] p-0" align="start">
+        <div className="p-2 border-b border-border">
+          <Input
+            placeholder="חפש בנק..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-8 text-xs"
+            autoFocus
+          />
+        </div>
+        <div className="max-h-48 overflow-y-auto">
+          {filtered.map(b => (
+            <button
+              key={b.id}
+              onClick={() => { onChange(b.bankNumber); setOpen(false); setSearch(''); }}
+              className={`w-full text-right px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors ${value === b.bankNumber ? 'bg-primary/5 text-primary font-medium' : ''}`}
+            >
+              {b.bankNumber} - {b.bankName}
+            </button>
+          ))}
+          {filtered.length === 0 && <div className="p-3 text-xs text-muted-foreground text-center">לא נמצא</div>}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function BranchSelector({ branches, bankNumber, value, onChange }: { branches: Branch[]; bankNumber: string; value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const bankBranches = useMemo(() => branches.filter(b => b.bankNumber === bankNumber), [branches, bankNumber]);
+  const filtered = useMemo(() => {
+    if (!search) return bankBranches.slice(0, 80);
+    return bankBranches.filter(b => b.branchName.includes(search) || b.branchNumber.includes(search)).slice(0, 80);
+  }, [bankBranches, search]);
+  const selected = bankBranches.find(b => b.branchNumber === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="w-full flex items-center justify-between h-9 px-3 text-sm border border-input rounded-md bg-background hover:bg-muted/30 transition-colors text-right" disabled={!bankNumber}>
+          <span className={selected ? 'text-foreground' : 'text-muted-foreground'}>
+            {selected ? `${selected.branchNumber} - ${selected.branchName}` : 'בחר סניף'}
+          </span>
+          <ChevronDown size={12} className="text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[280px] p-0" align="start">
+        <div className="p-2 border-b border-border">
+          <Input
+            placeholder="חפש סניף..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-8 text-xs"
+            autoFocus
+          />
+        </div>
+        <div className="max-h-48 overflow-y-auto">
+          {filtered.map(b => (
+            <button
+              key={b.id}
+              onClick={() => { onChange(b.branchNumber); setOpen(false); setSearch(''); }}
+              className={`w-full text-right px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors ${value === b.branchNumber ? 'bg-primary/5 text-primary font-medium' : ''}`}
+            >
+              {b.branchNumber} - {b.branchName}
+            </button>
+          ))}
+          {filtered.length === 0 && <div className="p-3 text-xs text-muted-foreground text-center">{bankNumber ? 'לא נמצא' : 'בחר בנק קודם'}</div>}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function DonorsPage() {
   const [donors, setDonors] = useState<Donor[]>([]);
@@ -31,8 +126,6 @@ export function DonorsPage() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [groups, setGroups] = useState<DonorGroup[]>([]);
-  const [bankSearch, setBankSearch] = useState('');
-  const [branchSearch, setBranchSearch] = useState('');
   const [donorCollections, setDonorCollections] = useState<any[]>([]);
   const [sortField, setSortField] = useState<string>('fullName');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -87,7 +180,6 @@ export function DonorsPage() {
   async function saveDonor() {
     if (!editingDonor.fullName.trim()) { toast.error('שם מלא הוא שדה חובה'); return; }
     
-    // Calculate endDate from monthCount
     let endDate = editingDonor.endDate;
     if (editingDonor.monthCount && editingDonor.monthCount > 0) {
       const start = new Date(editingDonor.startDate);
@@ -99,84 +191,75 @@ export function DonorsPage() {
       if (isEditing && editingDonor.id) {
         await db.donors.update(editingDonor.id, { ...editingDonor, endDate, updatedAt: new Date().toISOString() });
         await logActivity('עריכה', `עריכת תורם: ${editingDonor.fullName}`, 'donor', editingDonor.id, editingDonor.fullName, '', true, JSON.stringify(donors.find(d => d.id === editingDonor.id)));
-        toast.success('התורם עודכן בהצלחה');
+        toast.success('התורם עודכן');
       } else {
         const donorData = { ...editingDonor, endDate, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
         const donorId = await db.donors.add(donorData as Donor);
         if (editingDonor.monthlyAmount > 0) {
           await db.authorizations.add({
-            donorId: donorId as number,
-            amount: editingDonor.monthlyAmount,
-            chargeDay: editingDonor.chargeDay,
-            startDate: editingDonor.startDate,
-            endDate: endDate || '',
-            monthCount: editingDonor.monthCount,
-            monthsCollected: 0,
-            status: 'active',
-            createdAt: new Date().toISOString(),
+            donorId: donorId as number, amount: editingDonor.monthlyAmount, chargeDay: editingDonor.chargeDay,
+            startDate: editingDonor.startDate, endDate: endDate || '', monthCount: editingDonor.monthCount,
+            monthsCollected: 0, status: 'active', createdAt: new Date().toISOString(),
           });
         }
-        await logActivity('הוספה', `הוספת תורם חדש: ${editingDonor.fullName}`, 'donor', donorId as number, editingDonor.fullName, '', true, JSON.stringify(donorData));
-        toast.success('התורם נוסף בהצלחה');
+        await logActivity('הוספה', `הוספת תורם: ${editingDonor.fullName}`, 'donor', donorId as number, editingDonor.fullName, '', true, JSON.stringify(donorData));
+        toast.success('התורם נוסף');
       }
       setDialogOpen(false);
       loadAll();
     } catch {
-      toast.error('שגיאה בשמירת התורם');
+      toast.error('שגיאה בשמירה');
     }
   }
 
   async function deleteDonor(donor: Donor) {
-    if (!confirm(`האם למחוק את ${donor.fullName}?`)) return;
+    if (!confirm(`למחוק את ${donor.fullName}?`)) return;
     await logActivity('מחיקה', `מחיקת תורם: ${donor.fullName}`, 'donor', donor.id!, donor.fullName, '', true, JSON.stringify(donor));
     await db.donors.delete(donor.id!);
     await db.authorizations.where('donorId').equals(donor.id!).delete();
-    toast.success('התורם נמחק');
+    toast.success('נמחק');
     loadAll();
   }
 
   async function toggleDonorStatus(donor: Donor, newStatus: Donor['status']) {
     await db.donors.update(donor.id!, { status: newStatus, updatedAt: new Date().toISOString() });
     await logActivity('שינוי סטטוס', `${donor.fullName}: ${statusLabels[donor.status]} → ${statusLabels[newStatus]}`, 'donor', donor.id!, donor.fullName);
-    toast.success(`הסטטוס עודכן ל${statusLabels[newStatus]}`);
+    toast.success(`סטטוס: ${statusLabels[newStatus]}`);
     loadAll();
   }
 
   const statusLabels: Record<string, string> = { active: 'פעיל', frozen: 'מוקפא', cancelled: 'מבוטל', expired: 'פג תוקף', failed: 'נכשל' };
   const statusColors: Record<string, string> = {
-    active: 'bg-success/10 text-success',
-    frozen: 'bg-warning/10 text-warning',
-    cancelled: 'bg-destructive/10 text-destructive',
+    active: 'bg-emerald-50 text-emerald-700',
+    frozen: 'bg-amber-50 text-amber-700',
+    cancelled: 'bg-red-50 text-red-700',
     expired: 'bg-muted text-muted-foreground',
-    failed: 'bg-destructive/10 text-destructive',
+    failed: 'bg-red-50 text-red-700',
   };
 
   function updateField(field: keyof Donor, value: string | number | null) {
     setEditingDonor(prev => ({ ...prev, [field]: value }));
   }
 
-  const selectedBankBranches = branches.filter(b => b.bankNumber === editingDonor.bankNumber);
-  const filteredBanks = bankSearch ? banks.filter(b => b.bankName.includes(bankSearch) || b.bankNumber.includes(bankSearch)) : banks;
-  const filteredBranches2 = branchSearch ? selectedBankBranches.filter(b => b.branchName.includes(branchSearch) || b.branchNumber.includes(branchSearch)) : selectedBankBranches;
-
   const groupMap = new Map(groups.map(g => [g.id, g]));
+  const totalMonthly = filtered.filter(d => d.status === 'active').reduce((s, d) => s + d.monthlyAmount, 0);
 
   return (
     <div>
       <PageHeader
         title="תורמים"
-        description={`${donors.length} תורמים במערכת`}
-        actions={<Button onClick={openNew} size="sm" className="gap-1.5"><Plus size={15} /> הוסף תורם</Button>}
+        description={`${donors.length} תורמים | סה"כ חודשי: ₪${totalMonthly.toLocaleString()}`}
+        actions={<Button onClick={openNew} size="sm" className="gap-1.5 text-xs"><Plus size={14} /> תורם חדש</Button>}
       />
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="חיפוש שם, ת.ז. או טלפון..." value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+      <div className="flex flex-wrap gap-2 mb-3">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="חיפוש..." value={search} onChange={e => setSearch(e.target.value)} className="pr-8 h-8 text-xs" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-32"><SelectValue placeholder="סטטוס" /></SelectTrigger>
+          <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder="סטטוס" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">הכל</SelectItem>
             <SelectItem value="active">פעיל</SelectItem>
@@ -186,7 +269,7 @@ export function DonorsPage() {
           </SelectContent>
         </Select>
         <Select value={groupFilter} onValueChange={setGroupFilter}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="קבוצה" /></SelectTrigger>
+          <SelectTrigger className="w-32 h-8 text-xs"><SelectValue placeholder="קבוצה" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">כל הקבוצות</SelectItem>
             <SelectItem value="none">ללא קבוצה</SelectItem>
@@ -196,70 +279,67 @@ export function DonorsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-card rounded-xl border border-border/50 overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-[12px]">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {[
                   { key: 'fullName', label: 'שם' },
                   { key: 'idNumber', label: 'ת.ז.' },
                   { key: 'phone', label: 'טלפון' },
-                  { key: 'bankNumber', label: 'בנק' },
+                  { key: 'bankNumber', label: 'בנק/סניף' },
                   { key: 'monthlyAmount', label: 'סכום' },
+                  { key: 'monthsCollected', label: 'נגבה' },
                   { key: 'status', label: 'סטטוס' },
                 ].map(col => (
-                  <th key={col.key} className="text-right p-3 font-medium text-muted-foreground text-xs cursor-pointer hover:text-foreground select-none" onClick={() => toggleSort(col.key)}>
+                  <th key={col.key} className="text-right p-2.5 font-medium text-muted-foreground text-[11px] cursor-pointer hover:text-foreground select-none" onClick={() => toggleSort(col.key)}>
                     {col.label} {sortField === col.key && (sortDir === 'asc' ? '↑' : '↓')}
                   </th>
                 ))}
-                <th className="text-right p-3 font-medium text-muted-foreground text-xs w-32">פעולות</th>
+                <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px] w-24">פעולות</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(donor => (
                 <tr key={donor.id} className="border-b border-border/50 table-row-hover">
-                  <td className="p-3 font-medium">
-                    <div>{donor.fullName}</div>
+                  <td className="p-2.5">
+                    <div className="font-medium text-[12px]">{donor.fullName}</div>
                     {donor.groupId && groupMap.get(donor.groupId) && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">{groupMap.get(donor.groupId)!.name}</span>
+                      <span className="text-[9px] px-1.5 py-px rounded-full bg-accent text-accent-foreground">{groupMap.get(donor.groupId)!.name}</span>
                     )}
                   </td>
-                  <td className="p-3 text-muted-foreground">{donor.idNumber}</td>
-                  <td className="p-3 text-muted-foreground">{donor.phone}</td>
-                  <td className="p-3 text-muted-foreground">{donor.bankNumber}/{donor.branchNumber}</td>
-                  <td className="p-3 font-semibold">₪{donor.monthlyAmount.toLocaleString()}</td>
-                  <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${statusColors[donor.status]}`}>
+                  <td className="p-2.5 text-muted-foreground">{donor.idNumber}</td>
+                  <td className="p-2.5 text-muted-foreground">{donor.phone}</td>
+                  <td className="p-2.5 text-muted-foreground font-mono text-[11px]">{donor.bankNumber}/{donor.branchNumber}</td>
+                  <td className="p-2.5 font-semibold">₪{donor.monthlyAmount.toLocaleString()}</td>
+                  <td className="p-2.5 text-muted-foreground text-[11px]">
+                    {donor.monthsCollected}/{donor.monthCount || '∞'}
+                    <span className="text-[10px] mr-1 text-muted-foreground/70">
+                      (₪{(donor.monthsCollected * donor.monthlyAmount).toLocaleString()})
+                    </span>
+                  </td>
+                  <td className="p-2.5">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColors[donor.status]}`}>
                       {statusLabels[donor.status]}
                     </span>
                   </td>
-                  <td className="p-3">
-                    <div className="flex gap-0.5">
-                      <button onClick={() => openView(donor)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-primary" title="צפייה">
-                        <Eye size={14} />
-                      </button>
-                      <button onClick={() => openEdit(donor)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="עריכה">
-                        <Edit size={14} />
-                      </button>
+                  <td className="p-2.5">
+                    <div className="flex gap-px">
+                      <button onClick={() => openView(donor)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-primary" title="צפייה"><Eye size={13} /></button>
+                      <button onClick={() => openEdit(donor)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="עריכה"><Edit size={13} /></button>
                       {donor.status === 'active' ? (
-                        <button onClick={() => toggleDonorStatus(donor, 'frozen')} className="p-1.5 rounded-lg hover:bg-warning/10 transition-colors text-muted-foreground hover:text-warning" title="הקפאה">
-                          <Ban size={14} />
-                        </button>
+                        <button onClick={() => toggleDonorStatus(donor, 'frozen')} className="p-1 rounded hover:bg-amber-50 text-muted-foreground hover:text-amber-600" title="הקפאה"><Ban size={13} /></button>
                       ) : donor.status !== 'cancelled' ? (
-                        <button onClick={() => toggleDonorStatus(donor, 'active')} className="p-1.5 rounded-lg hover:bg-success/10 transition-colors text-muted-foreground hover:text-success" title="הפעלה">
-                          <PlayCircle size={14} />
-                        </button>
+                        <button onClick={() => toggleDonorStatus(donor, 'active')} className="p-1 rounded hover:bg-emerald-50 text-muted-foreground hover:text-emerald-600" title="הפעלה"><PlayCircle size={13} /></button>
                       ) : null}
-                      <button onClick={() => deleteDonor(donor)} className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="מחיקה">
-                        <Trash2 size={14} />
-                      </button>
+                      <button onClick={() => deleteDonor(donor)} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600" title="מחיקה"><Trash2 size={13} /></button>
                     </div>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="p-12 text-center text-muted-foreground">לא נמצאו תורמים</td></tr>
+                <tr><td colSpan={8} className="p-10 text-center text-muted-foreground text-xs">לא נמצאו תורמים</td></tr>
               )}
             </tbody>
           </table>
@@ -268,79 +348,57 @@ export function DonorsPage() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
-            <DialogTitle>{isEditing ? 'עריכת תורם' : 'הוספת תורם חדש'}</DialogTitle>
+            <DialogTitle className="text-sm">{isEditing ? 'עריכת תורם' : 'תורם חדש'}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-5">
-            {/* Personal */}
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-xs">שם מלא *</Label><Input value={editingDonor.fullName} onChange={e => updateField('fullName', e.target.value)} /></div>
-              <div><Label className="text-xs">תעודת זהות</Label><Input value={editingDonor.idNumber} onChange={e => updateField('idNumber', e.target.value)} /></div>
-              <div><Label className="text-xs">טלפון</Label><Input value={editingDonor.phone} onChange={e => updateField('phone', e.target.value)} /></div>
-              <div><Label className="text-xs">אימייל</Label><Input value={editingDonor.email} onChange={e => updateField('email', e.target.value)} /></div>
-              <div className="col-span-2"><Label className="text-xs">כתובת</Label><Input value={editingDonor.address} onChange={e => updateField('address', e.target.value)} /></div>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2.5">
+              <div><Label className="text-[11px]">שם מלא *</Label><Input value={editingDonor.fullName} onChange={e => updateField('fullName', e.target.value)} className="h-8 text-xs" /></div>
+              <div><Label className="text-[11px]">תעודת זהות</Label><Input value={editingDonor.idNumber} onChange={e => updateField('idNumber', e.target.value)} className="h-8 text-xs" /></div>
+              <div><Label className="text-[11px]">טלפון</Label><Input value={editingDonor.phone} onChange={e => updateField('phone', e.target.value)} className="h-8 text-xs" /></div>
+              <div><Label className="text-[11px]">אימייל</Label><Input value={editingDonor.email} onChange={e => updateField('email', e.target.value)} className="h-8 text-xs" /></div>
+              <div className="col-span-2"><Label className="text-[11px]">כתובת</Label><Input value={editingDonor.address} onChange={e => updateField('address', e.target.value)} className="h-8 text-xs" /></div>
             </div>
 
-            {/* Bank - with autocomplete */}
-            <div className="border-t pt-4">
-              <h3 className="text-sm font-semibold mb-3">פרטי בנק</h3>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="border-t pt-3">
+              <h3 className="text-xs font-semibold mb-2">פרטי בנק</h3>
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <Label className="text-xs">בנק</Label>
-                  <Input placeholder="חיפוש בנק..." value={bankSearch} onChange={e => setBankSearch(e.target.value)} className="mb-1" />
-                  <Select value={editingDonor.bankNumber} onValueChange={v => { updateField('bankNumber', v); updateField('branchNumber', ''); }}>
-                    <SelectTrigger><SelectValue placeholder="בחר בנק" /></SelectTrigger>
-                    <SelectContent className="max-h-48">
-                      {filteredBanks.slice(0, 50).map(b => (
-                        <SelectItem key={b.id} value={b.bankNumber}>{b.bankNumber} - {b.bankName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-[11px]">בנק</Label>
+                  <BankSelector banks={banks} value={editingDonor.bankNumber} onChange={v => { updateField('bankNumber', v); updateField('branchNumber', ''); }} placeholder="בחר בנק" />
                 </div>
                 <div>
-                  <Label className="text-xs">סניף</Label>
-                  <Input placeholder="חיפוש סניף..." value={branchSearch} onChange={e => setBranchSearch(e.target.value)} className="mb-1" />
-                  <Select value={editingDonor.branchNumber} onValueChange={v => updateField('branchNumber', v)}>
-                    <SelectTrigger><SelectValue placeholder="בחר סניף" /></SelectTrigger>
-                    <SelectContent className="max-h-48">
-                      {filteredBranches2.slice(0, 50).map(b => (
-                        <SelectItem key={b.id} value={b.branchNumber}>{b.branchNumber} - {b.branchName}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-[11px]">סניף</Label>
+                  <BranchSelector branches={branches} bankNumber={editingDonor.bankNumber} value={editingDonor.branchNumber} onChange={v => updateField('branchNumber', v)} />
                 </div>
-                <div><Label className="text-xs">מספר חשבון</Label><Input value={editingDonor.accountNumber} onChange={e => updateField('accountNumber', e.target.value)} /></div>
-                <div><Label className="text-xs">מספר הרשאה</Label><Input value={editingDonor.authorizationNumber} onChange={e => updateField('authorizationNumber', e.target.value)} /></div>
+                <div><Label className="text-[11px]">מספר חשבון</Label><Input value={editingDonor.accountNumber} onChange={e => updateField('accountNumber', e.target.value)} className="h-8 text-xs" /></div>
+                <div><Label className="text-[11px]">מספר הרשאה</Label><Input value={editingDonor.authorizationNumber} onChange={e => updateField('authorizationNumber', e.target.value)} className="h-8 text-xs" /></div>
               </div>
             </div>
 
-            {/* Donation details */}
-            <div className="border-t pt-4">
-              <h3 className="text-sm font-semibold mb-3">פרטי תרומה</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label className="text-xs">סכום חודשי (₪)</Label><Input type="number" value={editingDonor.monthlyAmount} onChange={e => updateField('monthlyAmount', Number(e.target.value))} /></div>
-                <div><Label className="text-xs">יום חיוב</Label><Input type="number" min={1} max={28} value={editingDonor.chargeDay} onChange={e => updateField('chargeDay', Number(e.target.value))} /></div>
-                <div><Label className="text-xs">תאריך התחלה</Label><Input type="date" value={editingDonor.startDate} onChange={e => updateField('startDate', e.target.value)} /></div>
+            <div className="border-t pt-3">
+              <h3 className="text-xs font-semibold mb-2">פרטי תרומה</h3>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div><Label className="text-[11px]">סכום חודשי (₪)</Label><Input type="number" value={editingDonor.monthlyAmount} onChange={e => updateField('monthlyAmount', Number(e.target.value))} className="h-8 text-xs" /></div>
+                <div><Label className="text-[11px]">יום חיוב</Label><Input type="number" min={1} max={28} value={editingDonor.chargeDay} onChange={e => updateField('chargeDay', Number(e.target.value))} className="h-8 text-xs" /></div>
+                <div><Label className="text-[11px]">תאריך התחלה</Label><Input type="date" value={editingDonor.startDate} onChange={e => updateField('startDate', e.target.value)} className="h-8 text-xs" /></div>
+                <div><Label className="text-[11px]">חודשים (0 = ללא הגבלה)</Label><Input type="number" min={0} value={editingDonor.monthCount} onChange={e => updateField('monthCount', Number(e.target.value))} className="h-8 text-xs" /></div>
                 <div>
-                  <Label className="text-xs">כמות חודשים (0 = ללא הגבלה)</Label>
-                  <Input type="number" min={0} value={editingDonor.monthCount} onChange={e => updateField('monthCount', Number(e.target.value))} />
-                </div>
-                <div>
-                  <Label className="text-xs">קבוצה</Label>
+                  <Label className="text-[11px]">קבוצה</Label>
                   <Select value={editingDonor.groupId?.toString() || 'none'} onValueChange={v => updateField('groupId', v === 'none' ? null : Number(v))}>
-                    <SelectTrigger><SelectValue placeholder="בחר קבוצה" /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="בחר קבוצה" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">ללא קבוצה</SelectItem>
+                      <SelectItem value="none">ללא</SelectItem>
                       {groups.map(g => <SelectItem key={g.id} value={g.id!.toString()}>{g.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs">סטטוס</Label>
+                  <Label className="text-[11px]">סטטוס</Label>
                   <Select value={editingDonor.status} onValueChange={v => updateField('status', v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="active">פעיל</SelectItem>
                       <SelectItem value="frozen">מוקפא</SelectItem>
@@ -351,71 +409,76 @@ export function DonorsPage() {
               </div>
             </div>
 
-            <div><Label className="text-xs">הערות</Label><Input value={editingDonor.notes} onChange={e => updateField('notes', e.target.value)} /></div>
+            <div><Label className="text-[11px]">הערות</Label><Input value={editingDonor.notes} onChange={e => updateField('notes', e.target.value)} className="h-8 text-xs" /></div>
           </div>
 
-          <DialogFooter className="gap-2 mt-4">
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>ביטול</Button>
-            <Button onClick={saveDonor}>{isEditing ? 'עדכן' : 'הוסף'}</Button>
+          <DialogFooter className="gap-2 mt-3">
+            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>ביטול</Button>
+            <Button size="sm" onClick={saveDonor}>{isEditing ? 'עדכן' : 'הוסף'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* View Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
-            <DialogTitle>פרטי תורם - {viewingDonor?.fullName}</DialogTitle>
+            <DialogTitle className="text-sm">{viewingDonor?.fullName}</DialogTitle>
           </DialogHeader>
           {viewingDonor && (
             <Tabs defaultValue="details">
-              <TabsList className="mb-4">
-                <TabsTrigger value="details">פרטים</TabsTrigger>
-                <TabsTrigger value="collections">היסטוריית גבייה</TabsTrigger>
+              <TabsList className="mb-3">
+                <TabsTrigger value="details" className="text-xs">פרטים</TabsTrigger>
+                <TabsTrigger value="collections" className="text-xs">היסטוריה</TabsTrigger>
               </TabsList>
               <TabsContent value="details">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-3 text-xs">
                   <div><span className="text-muted-foreground">שם:</span> <strong>{viewingDonor.fullName}</strong></div>
                   <div><span className="text-muted-foreground">ת.ז.:</span> <strong>{viewingDonor.idNumber}</strong></div>
                   <div><span className="text-muted-foreground">טלפון:</span> <strong>{viewingDonor.phone}</strong></div>
                   <div><span className="text-muted-foreground">אימייל:</span> <strong>{viewingDonor.email}</strong></div>
                   <div><span className="text-muted-foreground">כתובת:</span> <strong>{viewingDonor.address}</strong></div>
-                  <div><span className="text-muted-foreground">סטטוס:</span> <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[viewingDonor.status]}`}>{statusLabels[viewingDonor.status]}</span></div>
+                  <div><span className="text-muted-foreground">סטטוס:</span> <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColors[viewingDonor.status]}`}>{statusLabels[viewingDonor.status]}</span></div>
                   <div><span className="text-muted-foreground">בנק/סניף/חשבון:</span> <strong>{viewingDonor.bankNumber}/{viewingDonor.branchNumber}/{viewingDonor.accountNumber}</strong></div>
                   <div><span className="text-muted-foreground">סכום חודשי:</span> <strong>₪{viewingDonor.monthlyAmount.toLocaleString()}</strong></div>
                   <div><span className="text-muted-foreground">יום חיוב:</span> <strong>{viewingDonor.chargeDay}</strong></div>
-                  <div><span className="text-muted-foreground">חודשים שנגבו:</span> <strong>{viewingDonor.monthsCollected}/{viewingDonor.monthCount || '∞'}</strong></div>
-                  <div><span className="text-muted-foreground">סה"כ נגבה:</span> <strong>₪{(viewingDonor.monthsCollected * viewingDonor.monthlyAmount).toLocaleString()}</strong></div>
-                  {viewingDonor.groupId && groupMap.get(viewingDonor.groupId) && (
-                    <div><span className="text-muted-foreground">קבוצה:</span> <strong>{groupMap.get(viewingDonor.groupId)!.name}</strong></div>
-                  )}
+                  <div><span className="text-muted-foreground">נגבה:</span> <strong>{viewingDonor.monthsCollected}/{viewingDonor.monthCount || '∞'}</strong></div>
+                  <div className="col-span-2 bg-muted/30 rounded p-2">
+                    <span className="text-muted-foreground">סה"כ נגבה מתורם זה: </span>
+                    <strong className="text-primary text-sm">₪{(viewingDonor.monthsCollected * viewingDonor.monthlyAmount).toLocaleString()}</strong>
+                    {viewingDonor.monthCount > 0 && (
+                      <span className="text-muted-foreground mr-2">
+                        מתוך ₪{(viewingDonor.monthCount * viewingDonor.monthlyAmount).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
                   {viewingDonor.notes && <div className="col-span-2"><span className="text-muted-foreground">הערות:</span> {viewingDonor.notes}</div>}
                 </div>
-                <div className="flex gap-2 mt-4">
-                  <Button size="sm" variant="outline" onClick={() => { setViewDialogOpen(false); openEdit(viewingDonor); }}>עריכה</Button>
+                <div className="flex gap-2 mt-3">
+                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => { setViewDialogOpen(false); openEdit(viewingDonor); }}>עריכה</Button>
                   {viewingDonor.status === 'active' && (
-                    <Button size="sm" variant="outline" onClick={() => { toggleDonorStatus(viewingDonor, 'frozen'); setViewDialogOpen(false); }}>הקפאת חיוב</Button>
+                    <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => { toggleDonorStatus(viewingDonor, 'frozen'); setViewDialogOpen(false); }}>הקפאה</Button>
                   )}
                   {viewingDonor.status === 'frozen' && (
-                    <Button size="sm" variant="outline" onClick={() => { toggleDonorStatus(viewingDonor, 'active'); setViewDialogOpen(false); }}>הפעלת חיוב</Button>
+                    <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => { toggleDonorStatus(viewingDonor, 'active'); setViewDialogOpen(false); }}>הפעלה</Button>
                   )}
                 </div>
               </TabsContent>
               <TabsContent value="collections">
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b"><th className="text-right p-2 text-xs text-muted-foreground">סכום</th><th className="text-right p-2 text-xs text-muted-foreground">סטטוס</th></tr></thead>
+                <table className="w-full text-xs">
+                  <thead><tr className="border-b"><th className="text-right p-2 text-[11px] text-muted-foreground">סכום</th><th className="text-right p-2 text-[11px] text-muted-foreground">סטטוס</th></tr></thead>
                   <tbody>
                     {donorCollections.map((item: any) => (
-                      <tr key={item.id} className="border-b">
+                      <tr key={item.id} className="border-b border-border/50">
                         <td className="p-2">₪{item.amount.toLocaleString()}</td>
                         <td className="p-2">
-                          <span className={`px-2 py-0.5 rounded-full text-[11px] ${item.status === 'collected' ? 'bg-success/10 text-success' : item.status === 'pending' ? 'bg-warning/10 text-warning' : 'bg-destructive/10 text-destructive'}`}>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${item.status === 'collected' ? 'bg-emerald-50 text-emerald-700' : item.status === 'pending' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
                             {item.status === 'collected' ? 'נגבה' : item.status === 'pending' ? 'ממתין' : 'נכשל'}
                           </span>
                         </td>
                       </tr>
                     ))}
-                    {donorCollections.length === 0 && <tr><td colSpan={2} className="p-4 text-center text-muted-foreground">אין היסטוריית גבייה</td></tr>}
+                    {donorCollections.length === 0 && <tr><td colSpan={2} className="p-4 text-center text-muted-foreground text-xs">אין היסטוריה</td></tr>}
                   </tbody>
                 </table>
               </TabsContent>
