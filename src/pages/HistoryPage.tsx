@@ -39,11 +39,10 @@ export function HistoryPage() {
 
   async function markItemCollected(itemId: number) {
     await db.collectionItems.update(itemId, { status: 'collected' });
-    toast.success('החיוב סומן כנגבה');
+    toast.success('סומן כנגבה');
     if (selectedCollection) {
       const items = await db.collectionItems.where('collectionId').equals(selectedCollection.id!).toArray();
       setSelectedItems(items);
-      // Check if all items collected
       if (items.every(it => it.status === 'collected')) {
         await db.collections.update(selectedCollection.id!, { status: 'collected' });
         loadCollections();
@@ -52,18 +51,13 @@ export function HistoryPage() {
   }
 
   const statusLabels: Record<string, string> = { pending: 'ממתין', collected: 'נגבה', partial: 'חלקי' };
-  const statusStyles: Record<string, string> = { 
-    pending: 'bg-warning/10 text-warning', 
-    collected: 'bg-success/10 text-success', 
-    partial: 'bg-info/10 text-info' 
-  };
 
   return (
     <div>
-      <PageHeader title="היסטוריית גבייה" description={`${collections.length} גביות`} />
+      <PageHeader title="היסטוריית גבייה" description={`${collections.length} אצוות`} />
       <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-[13px]">
-          <thead><tr className="bg-muted/40 border-b border-border">
+        <table className="w-full text-[12px]">
+          <thead><tr className="bg-muted/30 border-b border-border">
             <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px]">תאריך</th>
             <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px]">חיובים</th>
             <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px]">סכום</th>
@@ -77,28 +71,45 @@ export function HistoryPage() {
                 <td className="p-2.5">{c.date}</td>
                 <td className="p-2.5">{c.totalRecords}</td>
                 <td className="p-2.5 font-semibold">₪{c.totalAmount.toLocaleString()}</td>
-                <td className="p-2.5 text-[11px] font-mono text-muted-foreground">{c.fileName}</td>
+                <td className="p-2.5 font-mono text-[10px] text-muted-foreground">{c.fileName}</td>
                 <td className="p-2.5">
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusStyles[c.status]}`}>{statusLabels[c.status]}</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    c.status === 'collected' ? 'bg-emerald-50 text-emerald-700' : 
+                    c.status === 'pending' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
+                  }`}>{statusLabels[c.status]}</span>
                 </td>
                 <td className="p-2.5 flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => viewDetails(c)} className="h-6 text-[11px] gap-1 px-2"><Eye size={11} /> צפייה</Button>
+                  <Button size="sm" variant="ghost" onClick={() => viewDetails(c)} className="h-6 text-[10px] gap-1 px-1.5">
+                    <Eye size={11} /> צפייה
+                  </Button>
                   {c.status === 'pending' && (
-                    <Button size="sm" variant="ghost" onClick={() => markAsCollected(c.id!)} className="h-6 text-[11px] gap-1 px-2 text-success hover:text-success"><CheckCircle size={11} /> נגבה</Button>
+                    <Button size="sm" variant="ghost" onClick={() => markAsCollected(c.id!)} className="h-6 text-[10px] gap-1 px-1.5 text-emerald-600 hover:text-emerald-700">
+                      <CheckCircle size={11} /> סמן כנגבה
+                    </Button>
                   )}
                 </td>
               </tr>
             ))}
-            {collections.length === 0 && <tr><td colSpan={6} className="p-10 text-center text-muted-foreground text-sm">אין היסטוריית גביות</td></tr>}
+            {collections.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground text-xs">אין אצוות</td></tr>}
           </tbody>
         </table>
       </div>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" dir="rtl">
-          <DialogHeader><DialogTitle className="text-base">פרטי גבייה - {selectedCollection?.date}</DialogTitle></DialogHeader>
-          <table className="w-full text-[13px]">
-            <thead><tr className="bg-muted/40 border-b">
+          <DialogHeader>
+            <DialogTitle className="text-sm">אצווה - {selectedCollection?.date}</DialogTitle>
+          </DialogHeader>
+          {selectedCollection?.status === 'pending' && (
+            <div className="bg-amber-50 border border-amber-200 rounded p-2.5 mb-2 flex items-center justify-between">
+              <span className="text-xs text-amber-700">אצווה זו ממתינה לאישור גבייה</span>
+              <Button size="sm" className="h-6 text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => markAsCollected(selectedCollection.id!)}>
+                <CheckCircle size={11} /> סמן הכל כנגבה
+              </Button>
+            </div>
+          )}
+          <table className="w-full text-[12px]">
+            <thead><tr className="bg-muted/30 border-b">
               <th className="text-right p-2 text-[11px] text-muted-foreground">שם</th>
               <th className="text-right p-2 text-[11px] text-muted-foreground">בנק/סניף</th>
               <th className="text-right p-2 text-[11px] text-muted-foreground">חשבון</th>
@@ -111,16 +122,16 @@ export function HistoryPage() {
                 <tr key={item.id} className="border-b border-border/50">
                   <td className="p-2 font-medium">{item.donorName}</td>
                   <td className="p-2 text-muted-foreground">{item.bankNumber}/{item.branchNumber}</td>
-                  <td className="p-2 text-muted-foreground font-mono text-[11px]">{item.accountNumber}</td>
+                  <td className="p-2 text-muted-foreground font-mono text-[10px]">{item.accountNumber}</td>
                   <td className="p-2 font-semibold">₪{item.amount.toLocaleString()}</td>
                   <td className="p-2">
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${item.status === 'collected' ? 'bg-success/10 text-success' : item.status === 'pending' ? 'bg-warning/10 text-warning' : 'bg-destructive/10 text-destructive'}`}>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${item.status === 'collected' ? 'bg-emerald-50 text-emerald-700' : item.status === 'pending' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
                       {item.status === 'collected' ? 'נגבה' : item.status === 'pending' ? 'ממתין' : 'נכשל'}
                     </span>
                   </td>
                   <td className="p-2">
                     {item.status === 'pending' && (
-                      <button onClick={() => markItemCollected(item.id!)} className="text-[11px] text-success hover:underline">סמן כנגבה</button>
+                      <button onClick={() => markItemCollected(item.id!)} className="text-[10px] text-emerald-600 hover:underline">סמן כנגבה</button>
                     )}
                   </td>
                 </tr>
