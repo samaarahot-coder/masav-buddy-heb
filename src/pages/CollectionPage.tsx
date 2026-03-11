@@ -1,28 +1,51 @@
 import { useEffect, useState } from 'react';
-import { db, type Donor, type CollectionItem, getSettings } from '@/db/database';
+import { db, type Donor, type CollectionItem, type DonorGroup, getSettings, logActivity } from '@/db/database';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { generateMasavFile } from '@/lib/masav-generator';
+import { generateMasavFile, generateMasavPreview, validateDonorsForMasav, type MasavPreviewRecord, type MasavValidationError } from '@/lib/masav-generator';
+import { FileText, AlertTriangle, CheckCircle } from 'lucide-react';
 
 export function CollectionPage() {
   const [collectionDate, setCollectionDate] = useState(new Date().toISOString().split('T')[0]);
   const [donors, setDonors] = useState<(Donor & { selected: boolean })[]>([]);
-  const [step, setStep] = useState<'select' | 'preview'>('select');
+  const [groups, setGroups] = useState<DonorGroup[]>([]);
+  const [groupFilter, setGroupFilter] = useState('all');
+  const [includeAlreadyCollected, setIncludeAlreadyCollected] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewRecords, setPreviewRecords] = useState<MasavPreviewRecord[]>([]);
+  const [validationErrors, setValidationErrors] = useState<MasavValidationError[]>([]);
+  const [errorsOpen, setErrorsOpen] = useState(false);
 
-  useEffect(() => { loadEligibleDonors(); }, [collectionDate]);
+  useEffect(() => { loadEligibleDonors(); }, [collectionDate, groupFilter, includeAlreadyCollected]);
+
+  useEffect(() => {
+    db.donorGroups.toArray().then(setGroups);
+  }, []);
 
   async function loadEligibleDonors() {
     const activeDonors = await db.donors.where('status').equals('active').toArray();
     const date = new Date(collectionDate);
+    const currentMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
     const eligible = activeDonors.filter(d => {
+      // Filter by group
+      if (groupFilter !== 'all' && d.groupId?.toString() !== groupFilter) return false;
+      // Check date range
       if (d.endDate && new Date(d.endDate) < date) return false;
       if (new Date(d.startDate) > date) return false;
+      // Check month count
+      if (d.monthCount > 0 && d.monthsCollected >= d.monthCount) return false;
+      // Check if already collected this month (unless override)
+      if (!includeAlreadyCollected && d.lastCollectedDate === currentMonth) return false;
       return true;
     });
+
     setDonors(eligible.map(d => ({ ...d, selected: true })));
   }
 
@@ -34,47 +57,47 @@ export function CollectionPage() {
     setDonors(prev => prev.map(d => ({ ...d, selected: checked })));
   }
 
-  async function createCollection() {
+  async function showPreview() {
     const selected = donors.filter(d => d.selected);
-    if (selected.length === 0) {
-      toast.error('לא נבחרו תורמים לגבייה');
-      return;
-    }
+    if (selected.length === 0) { toast.error('לא נבחרו תורמים'); return; }
 
     const settings = await getSettings();
-    if (!settings?.masvInstitutionNumber) {
-      toast.error('יש להגדיר את פרטי המוסד בהגדרות המערכת');
-      return;
-    }
+    if (!settings?.masvInstitutionNumber) { toast.error('יש להגדיר פרטי מוסד בהגדרות'); return; }
 
-    // Validate all records
-    const errors: string[] = [];
-    selected.forEach(d => {
-      if (!d.bankNumber || d.bankNumber.length < 2) errors.push(`${d.fullName}: מספר בנק לא תקין`);
-      if (!d.branchNumber || d.branchNumber.length < 3) errors.push(`${d.fullName}: מספר סניף לא תקין`);
-      if (!d.accountNumber) errors.push(`${d.fullName}: מספר חשבון חסר`);
-      if (!d.monthlyAmount || d.monthlyAmount <= 0) errors.push(`${d.fullName}: סכום לא תקין`);
-    });
-
+    // Validate
+    const errors = validateDonorsForMasav(settings, selected);
     if (errors.length > 0) {
-      toast.error(`נמצאו ${errors.length} שגיאות:\n${errors.slice(0, 5).join('\n')}`);
+      setValidationErrors(errors);
+      setErrorsOpen(true);
       return;
     }
+
+    const records = generateMasavPreview(settings, selected, collectionDate);
+    setPreviewRecords(records);
+    setPreviewOpen(true);
+  }
+
+  async function createCollection() {
+    const selected = donors.filter(d => d.selected);
+    const settings = await getSettings();
+    if (!settings) return;
 
     const totalAmount = selected.reduce((sum, d) => sum + d.monthlyAmount, 0);
     const fileName = `masav_${collectionDate.replace(/-/g, '')}.txt`;
+    const date = new Date(collectionDate);
+    const currentMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
-    // Create collection record
+    // Create collection record (status: pending)
     const collectionId = await db.collections.add({
       date: collectionDate,
       totalAmount,
       totalRecords: selected.length,
       fileName,
-      status: 'completed',
+      status: 'pending',
       createdAt: new Date().toISOString(),
     });
 
-    // Create collection items
+    // Create collection items (status: pending)
     const items: Omit<CollectionItem, 'id'>[] = selected.map(d => ({
       collectionId: collectionId as number,
       donorId: d.id!,
@@ -84,10 +107,25 @@ export function CollectionPage() {
       accountNumber: d.accountNumber,
       authorizationNumber: d.authorizationNumber,
       amount: d.monthlyAmount,
-      status: 'success' as const,
+      status: 'pending' as const,
     }));
 
     await db.collectionItems.bulkAdd(items as CollectionItem[]);
+
+    // Update donors - mark as collected this month
+    for (const d of selected) {
+      await db.donors.update(d.id!, {
+        lastCollectedDate: currentMonth,
+        monthsCollected: (d.monthsCollected || 0) + 1,
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Check if expired
+      if (d.monthCount > 0 && (d.monthsCollected || 0) + 1 >= d.monthCount) {
+        await db.donors.update(d.id!, { status: 'expired' });
+        await db.authorizations.where('donorId').equals(d.id!).modify({ status: 'expired' });
+      }
+    }
 
     // Generate MASAV file
     try {
@@ -99,8 +137,13 @@ export function CollectionPage() {
       a.download = fileName;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success(`קובץ מס"ב נוצר בהצלחה! ${selected.length} חיובים, סה"כ ₪${totalAmount.toLocaleString()}`);
-    } catch (e) {
+
+      await logActivity('גבייה', `יצירת קובץ מס"ב: ${selected.length} חיובים, ₪${totalAmount.toLocaleString()}`, 'collection', collectionId as number, fileName, '', true, JSON.stringify({ collectionId, items: selected.map(d => d.id) }));
+
+      toast.success(`קובץ מס"ב נוצר! ${selected.length} חיובים, סה"כ ₪${totalAmount.toLocaleString()}`);
+      setPreviewOpen(false);
+      loadEligibleDonors();
+    } catch {
       toast.error('שגיאה ביצירת קובץ מס"ב');
     }
   }
@@ -112,53 +155,124 @@ export function CollectionPage() {
     <div>
       <PageHeader title="יצירת גבייה" description="בחירת תורמים ויצירת קובץ מס״ב" />
 
-      <div className="bg-card rounded-lg border border-border p-6 mb-6">
-        <div className="flex items-end gap-4">
+      {/* Controls */}
+      <div className="bg-card rounded-xl border border-border/50 p-5 mb-5">
+        <div className="flex flex-wrap items-end gap-4">
           <div>
-            <Label>תאריך גבייה</Label>
-            <Input type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} className="w-48" />
+            <Label className="text-xs">תאריך גבייה</Label>
+            <Input type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} className="w-44" />
           </div>
-          <div className="text-sm text-muted-foreground">
-            {selectedCount} תורמים נבחרו | סה"כ ₪{selectedTotal.toLocaleString()}
+          <div>
+            <Label className="text-xs">קבוצה</Label>
+            <Select value={groupFilter} onValueChange={setGroupFilter}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="כל הקבוצות" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">כל הקבוצות</SelectItem>
+                {groups.map(g => <SelectItem key={g.id} value={g.id!.toString()}>{g.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox checked={includeAlreadyCollected} onCheckedChange={c => setIncludeAlreadyCollected(!!c)} id="include-collected" />
+            <label htmlFor="include-collected" className="text-xs text-muted-foreground cursor-pointer">כלול תורמים שכבר נגבו החודש</label>
+          </div>
+          <div className="mr-auto bg-primary/5 rounded-lg px-4 py-2">
+            <span className="text-sm font-semibold">{selectedCount} תורמים</span>
+            <span className="text-sm text-muted-foreground mr-2">| סה"כ</span>
+            <span className="text-sm font-bold text-primary">₪{selectedTotal.toLocaleString()}</span>
           </div>
         </div>
       </div>
 
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
+      {/* Table */}
+      <div className="bg-card rounded-xl border border-border/50 overflow-hidden">
         <table className="w-full text-sm">
-          <thead><tr className="bg-muted/50 border-b border-border">
+          <thead><tr className="bg-muted/30 border-b border-border">
             <th className="p-3 w-10">
-              <Checkbox checked={donors.length > 0 && donors.every(d => d.selected)} onCheckedChange={(c) => toggleAll(!!c)} />
+              <Checkbox checked={donors.length > 0 && donors.every(d => d.selected)} onCheckedChange={c => toggleAll(!!c)} />
             </th>
-            <th className="text-right p-3 font-medium text-muted-foreground">שם</th>
-            <th className="text-right p-3 font-medium text-muted-foreground">בנק</th>
-            <th className="text-right p-3 font-medium text-muted-foreground">סניף</th>
-            <th className="text-right p-3 font-medium text-muted-foreground">חשבון</th>
-            <th className="text-right p-3 font-medium text-muted-foreground">סכום</th>
+            <th className="text-right p-3 font-medium text-muted-foreground text-xs">שם</th>
+            <th className="text-right p-3 font-medium text-muted-foreground text-xs">בנק</th>
+            <th className="text-right p-3 font-medium text-muted-foreground text-xs">סניף</th>
+            <th className="text-right p-3 font-medium text-muted-foreground text-xs">חשבון</th>
+            <th className="text-right p-3 font-medium text-muted-foreground text-xs">סכום</th>
+            <th className="text-right p-3 font-medium text-muted-foreground text-xs">יום חיוב</th>
           </tr></thead>
           <tbody>
             {donors.map(d => (
-              <tr key={d.id} className={`border-b border-border table-row-hover ${!d.selected ? 'opacity-50' : ''}`}>
+              <tr key={d.id} className={`border-b border-border/50 table-row-hover ${!d.selected ? 'opacity-40' : ''}`}>
                 <td className="p-3"><Checkbox checked={d.selected} onCheckedChange={() => toggleDonor(d.id!)} /></td>
                 <td className="p-3 font-medium">{d.fullName}</td>
-                <td className="p-3">{d.bankNumber}</td>
-                <td className="p-3">{d.branchNumber}</td>
-                <td className="p-3">{d.accountNumber}</td>
-                <td className="p-3">₪{d.monthlyAmount.toLocaleString()}</td>
+                <td className="p-3 text-muted-foreground">{d.bankNumber}</td>
+                <td className="p-3 text-muted-foreground">{d.branchNumber}</td>
+                <td className="p-3 text-muted-foreground">{d.accountNumber}</td>
+                <td className="p-3 font-semibold">₪{d.monthlyAmount.toLocaleString()}</td>
+                <td className="p-3 text-muted-foreground">{d.chargeDay}</td>
               </tr>
             ))}
-            {donors.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">אין תורמים זכאים לגבייה בתאריך זה</td></tr>}
+            {donors.length === 0 && <tr><td colSpan={7} className="p-12 text-center text-muted-foreground">אין תורמים זכאים לגבייה בתאריך זה</td></tr>}
           </tbody>
         </table>
       </div>
 
       {donors.length > 0 && (
-        <div className="mt-6 flex justify-end">
-          <Button onClick={createCollection} size="lg">
-            יצירת קובץ מס"ב ({selectedCount} חיובים)
+        <div className="mt-5 flex justify-end">
+          <Button onClick={showPreview} size="lg" className="gap-2">
+            <FileText size={18} /> תצוגה מקדימה ({selectedCount} חיובים)
           </Button>
         </div>
       )}
+
+      {/* MASAV Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto" dir="rtl">
+          <DialogHeader><DialogTitle>תצוגה מקדימה - קובץ מס"ב</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            {previewRecords.map((rec, i) => (
+              <div key={i} className={`rounded-lg border p-4 ${rec.type === 'header' ? 'bg-primary/5 border-primary/20' : rec.type === 'summary' ? 'bg-success/5 border-success/20' : 'bg-muted/30 border-border/50'}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  {rec.type === 'header' && <FileText size={14} className="text-primary" />}
+                  {rec.type === 'transaction' && <CheckCircle size={14} className="text-success" />}
+                  {rec.type === 'summary' && <FileText size={14} className="text-success" />}
+                  <span className="text-xs font-semibold">{rec.fields['סוג רשומה']}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  {Object.entries(rec.fields).filter(([k]) => k !== 'סוג רשומה').map(([key, val]) => (
+                    <div key={key}><span className="text-muted-foreground">{key}:</span> <strong>{val}</strong></div>
+                  ))}
+                </div>
+                <div className="mt-2 font-mono text-[10px] bg-background/50 p-2 rounded overflow-x-auto text-muted-foreground leading-relaxed" dir="ltr">
+                  {rec.raw}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>סגור</Button>
+            <Button onClick={createCollection} className="gap-1.5">
+              <FileText size={16} /> צור קובץ והורד
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Validation Errors Dialog */}
+      <Dialog open={errorsOpen} onOpenChange={setErrorsOpen}>
+        <DialogContent className="max-w-lg" dir="rtl">
+          <DialogHeader><DialogTitle className="flex items-center gap-2 text-destructive"><AlertTriangle size={18} /> שגיאות אימות</DialogTitle></DialogHeader>
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {validationErrors.map((err, i) => (
+              <div key={i} className="bg-destructive/5 border border-destructive/20 rounded-lg p-3">
+                <p className="font-semibold text-sm mb-1">{err.donorName}</p>
+                <ul className="text-xs text-destructive space-y-0.5">
+                  {err.errors.map((e, j) => <li key={j}>• {e}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <Button variant="outline" onClick={() => setErrorsOpen(false)} className="mt-2">סגור</Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

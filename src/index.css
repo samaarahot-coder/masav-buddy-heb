@@ -1,50 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap');
-
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 220 25% 10%;
+    --background: 220 14% 96%;
+    --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 25% 10%;
+    --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 25% 10%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 217 71% 45%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 20% 95%;
-    --secondary-foreground: 220 25% 20%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 210 15% 93%;
-    --muted-foreground: 215 15% 47%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
 
-    --accent: 145 63% 42%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 214 20% 88%;
-    --input: 214 20% 88%;
-    --ring: 217 71% 45%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
 
-    --radius: 0.625rem;
+    --radius: 0.75rem;
 
-    --sidebar-bg: 220 30% 15%;
-    --sidebar-fg: 210 20% 85%;
-    --sidebar-active: 217 71% 50%;
-    --sidebar-hover: 220 25% 22%;
-    --sidebar-border: 220 20% 25%;
-
-    --success: 145 63% 42%;
+    --success: 142 71% 45%;
     --warning: 38 92% 50%;
     --info: 199 89% 48%;
+
+    --sidebar-bg: 224 71% 4%;
+    --sidebar-fg: 213 31% 91%;
+    --sidebar-active: 221 83% 53%;
+    --sidebar-hover: 215 28% 17%;
+    --sidebar-border: 215 28% 17%;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -53,7 +53,13 @@
     --sidebar-accent: 240 4.8% 95.9%;
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border-default: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: 221 83% 53%;
+
+    --chart-1: 221 83% 53%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 199 89% 48%;
+    --chart-5: 0 84% 60%;
   }
 }
 
@@ -67,12 +73,9 @@
   }
 
   body {
-    @apply bg-background text-foreground font-heebo;
-    font-feature-settings: "kern";
-    -webkit-font-smoothing: antialiased;
+    @apply bg-background text-foreground font-heebo antialiased;
   }
 
-  /* RTL specific adjustments */
   input, textarea, select {
     direction: rtl;
     text-align: right;
@@ -81,14 +84,31 @@
 
 @layer utilities {
   .sidebar-gradient {
-    background: linear-gradient(180deg, hsl(220 30% 15%) 0%, hsl(220 35% 10%) 100%);
+    background: linear-gradient(180deg, hsl(224 71% 4%) 0%, hsl(222 47% 8%) 100%);
   }
 
-  .stat-card-shadow {
-    box-shadow: 0 1px 3px 0 hsl(0 0% 0% / 0.06), 0 1px 2px -1px hsl(0 0% 0% / 0.06);
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl shadow-sm;
+  }
+
+  .stat-card {
+    @apply bg-card rounded-xl border border-border/50 p-5 shadow-sm hover:shadow-md transition-all duration-200;
   }
 
   .table-row-hover:hover {
-    background-color: hsl(210 20% 97%);
+    @apply bg-muted/40;
+  }
+
+  .page-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-l from-primary to-info;
   }
 }
