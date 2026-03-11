@@ -6,61 +6,61 @@
 
 @layer base {
   :root {
-    --background: 220 20% 97%;
-    --foreground: 220 30% 15%;
+    --background: 0 0% 98%;
+    --foreground: 220 20% 18%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 30% 15%;
+    --card-foreground: 220 20% 18%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 30% 15%;
+    --popover-foreground: 220 20% 18%;
 
-    --primary: 230 70% 56%;
+    --primary: 222 62% 52%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 20% 95%;
-    --secondary-foreground: 220 30% 20%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 20% 25%;
 
-    --muted: 220 15% 93%;
-    --muted-foreground: 220 10% 46%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 52%;
 
-    --accent: 220 20% 95%;
-    --accent-foreground: 220 30% 15%;
+    --accent: 222 62% 96%;
+    --accent-foreground: 222 62% 40%;
 
-    --destructive: 0 72% 55%;
+    --destructive: 0 65% 52%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 90%;
-    --input: 220 15% 90%;
-    --ring: 230 70% 56%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 222 62% 52%;
 
-    --radius: 0.625rem;
+    --radius: 0.5rem;
 
-    --success: 152 60% 42%;
-    --warning: 38 90% 50%;
-    --info: 210 85% 55%;
+    --success: 152 55% 40%;
+    --warning: 38 85% 48%;
+    --info: 210 80% 52%;
 
-    --sidebar-bg: 225 25% 12%;
-    --sidebar-fg: 220 15% 85%;
-    --sidebar-active: 230 70% 56%;
-    --sidebar-hover: 225 20% 18%;
-    --sidebar-border: 225 20% 18%;
-    --sidebar-muted: 220 10% 50%;
+    --sidebar-bg: 222 30% 14%;
+    --sidebar-fg: 220 12% 80%;
+    --sidebar-active: 222 62% 52%;
+    --sidebar-hover: 222 25% 20%;
+    --sidebar-border: 222 25% 20%;
+    --sidebar-muted: 220 10% 48%;
 
-    --sidebar-background: 225 25% 12%;
-    --sidebar-foreground: 220 15% 85%;
-    --sidebar-primary: 230 70% 56%;
+    --sidebar-background: 222 30% 14%;
+    --sidebar-foreground: 220 12% 80%;
+    --sidebar-primary: 222 62% 52%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 225 20% 18%;
-    --sidebar-accent-foreground: 220 15% 85%;
-    --sidebar-border-default: 225 20% 18%;
-    --sidebar-ring: 230 70% 56%;
+    --sidebar-accent: 222 25% 20%;
+    --sidebar-accent-foreground: 220 12% 80%;
+    --sidebar-border-default: 222 25% 20%;
+    --sidebar-ring: 222 62% 52%;
 
-    --chart-1: 230 70% 56%;
-    --chart-2: 152 60% 42%;
-    --chart-3: 38 90% 50%;
-    --chart-4: 210 85% 55%;
-    --chart-5: 0 72% 55%;
+    --chart-1: 222 62% 52%;
+    --chart-2: 152 55% 40%;
+    --chart-3: 38 85% 48%;
+    --chart-4: 210 80% 52%;
+    --chart-5: 0 65% 52%;
   }
 }
 
@@ -85,23 +85,15 @@
 
 @layer utilities {
   .sidebar-gradient {
-    background: linear-gradient(180deg, hsl(225 25% 12%) 0%, hsl(225 25% 9%) 100%);
+    background: linear-gradient(180deg, hsl(222 30% 14%) 0%, hsl(222 30% 11%) 100%);
   }
 
   .glass-card {
-    @apply bg-card border border-border rounded-xl shadow-sm;
-  }
-
-  .stat-card-shadow {
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
-  }
-
-  .stat-card-shadow:hover {
-    box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.06);
+    @apply bg-card border border-border rounded-lg;
   }
 
   .table-row-hover {
-    @apply transition-colors duration-100;
+    @apply transition-colors duration-75;
   }
 
   .table-row-hover:hover {
@@ -109,15 +101,11 @@
   }
 
   .page-fade-in {
-    animation: fadeIn 0.25s ease-out;
+    animation: fadeIn 0.2s ease-out;
   }
 
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(4px); }
+    from { opacity: 0; transform: translateY(3px); }
     to { opacity: 1; transform: translateY(0); }
-  }
-
-  .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-l from-primary to-info;
   }
 }
