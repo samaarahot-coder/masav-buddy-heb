@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
+import { GlobalSearch } from '../GlobalSearch';
+import { CreditFooter } from '../CreditFooter';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -10,6 +12,18 @@ interface AppLayoutProps {
 export function AppLayout({ children, currentPage, onNavigate }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  // Load theme from localStorage
+  useEffect(() => {
+    const theme = localStorage.getItem('masav-theme');
+    if (theme === 'dark') document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+
+    const primaryColor = localStorage.getItem('masav-primary-color');
+    if (primaryColor) {
+      document.documentElement.style.setProperty('--user-primary', primaryColor);
+    }
+  }, []);
+
   return (
     <div className="flex h-screen overflow-hidden" dir="rtl">
       <Sidebar
@@ -19,8 +33,13 @@ export function AppLayout({ children, currentPage, onNavigate }: AppLayoutProps)
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
       <main className="flex-1 overflow-auto bg-background">
+        {/* Top Bar */}
+        <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40 px-4 lg:px-6 h-12 flex items-center gap-3">
+          <GlobalSearch onNavigate={onNavigate} />
+        </div>
         <div className="p-4 lg:p-6 max-w-[1200px] page-fade-in">
           {children}
+          <CreditFooter />
         </div>
       </main>
     </div>
