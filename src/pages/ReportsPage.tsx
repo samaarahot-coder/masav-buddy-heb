@@ -3,7 +3,7 @@ import { db } from '@/db/database';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -75,49 +75,52 @@ export function ReportsPage() {
     URL.revokeObjectURL(url);
   }
 
+  const summaryCards = [
+    { label: 'נגבה', value: `₪${summary.totalCollected.toLocaleString()}`, color: 'text-emerald-600 dark:text-emerald-400' },
+    { label: 'ממתין לגבייה', value: `₪${summary.totalPending.toLocaleString()}`, color: 'text-amber-600 dark:text-amber-400' },
+    { label: 'תורמים פעילים', value: summary.totalDonors, color: '' },
+    { label: 'החזרות', value: summary.totalFailed, color: '' },
+    { label: 'ממוצע לתורם', value: `₪${summary.avgAmount.toLocaleString()}`, color: '' },
+  ];
+
   return (
     <div>
-      <PageHeader title="דוחות" description="ניתוח נתונים" actions={
-        <div className="flex gap-1.5">
+      <PageHeader title="דוחות" description="ניתוח נתוני גבייה" actions={
+        <div className="flex gap-2">
           <Select value={period} onValueChange={(v: any) => setPeriod(v)}>
-            <SelectTrigger className="w-24 h-7 text-[11px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="month">חודשי</SelectItem>
               <SelectItem value="year">שנתי</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" variant="outline" onClick={exportReport} className="gap-1 h-7 text-[11px]">
-            <Download size={12} /> יצוא
+          <Button size="sm" variant="outline" onClick={exportReport} className="gap-1.5 text-xs">
+            <Download size={13} /> יצוא Excel
           </Button>
         </div>
       } />
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
-        {[
-          { label: 'נגבה', value: `₪${summary.totalCollected.toLocaleString()}`, cls: 'text-emerald-700' },
-          { label: 'ממתין לגבייה', value: `₪${summary.totalPending.toLocaleString()}`, cls: 'text-amber-700' },
-          { label: 'תורמים פעילים', value: summary.totalDonors, cls: '' },
-          { label: 'החזרות', value: summary.totalFailed, cls: '' },
-          { label: 'ממוצע לתורם', value: `₪${summary.avgAmount.toLocaleString()}`, cls: '' },
-        ].map(s => (
-          <div key={s.label} className="bg-card rounded-lg border border-border p-3">
-            <p className="text-[10px] text-muted-foreground mb-1">{s.label}</p>
-            <p className={`text-base font-bold ${s.cls}`}>{s.value}</p>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+        {summaryCards.map(s => (
+          <div key={s.label} className="glass-card p-3.5">
+            <p className="text-[10px] text-muted-foreground mb-1.5">{s.label}</p>
+            <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="bg-card rounded-lg border border-border p-3.5">
-        <h2 className="text-[11px] font-semibold mb-3">גרף גבייה {period === 'month' ? 'חודשית' : 'שנתית'}</h2>
-        <div className="h-52">
+      <div className="glass-card p-4">
+        <h2 className="text-sm font-semibold mb-4">גרף גבייה {period === 'month' ? 'חודשית' : 'שנתית'}</h2>
+        <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 13% 91%)" />
-              <XAxis dataKey="period" tick={{ fontSize: 9 }} />
-              <YAxis tick={{ fontSize: 9 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="period" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} />
               <Tooltip formatter={(value: number) => [`₪${value.toLocaleString()}`, '']} />
-              <Bar dataKey="collected" fill="hsl(152 55% 40%)" radius={[3, 3, 0, 0]} name="נגבה" stackId="a" />
-              <Bar dataKey="pending" fill="hsl(38 85% 48%)" radius={[3, 3, 0, 0]} name="ממתין" stackId="a" />
+              <Legend />
+              <Bar dataKey="collected" fill="hsl(142 71% 45%)" radius={[4, 4, 0, 0]} name="נגבה" stackId="a" />
+              <Bar dataKey="pending" fill="hsl(38 92% 50%)" radius={[4, 4, 0, 0]} name="ממתין" stackId="a" />
             </BarChart>
           </ResponsiveContainer>
         </div>
