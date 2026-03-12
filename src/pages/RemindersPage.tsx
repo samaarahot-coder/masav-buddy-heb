@@ -121,7 +121,7 @@ export function RemindersPage() {
       {/* List */}
       <div className="space-y-2">
         {activeReminders.map(r => (
-          <div key={r.id} className={`bg-card rounded-xl border border-border/50 p-4 flex items-center justify-between ${r.completed ? 'opacity-50' : ''}`}>
+          <div key={r.id} className={`glass-card p-4 flex items-center justify-between ${r.completed ? 'opacity-50' : ''}`}>
             <div className="flex items-center gap-3">
               {typeIcons[r.type]}
               <div>

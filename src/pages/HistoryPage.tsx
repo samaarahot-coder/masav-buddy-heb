@@ -55,7 +55,7 @@ export function HistoryPage() {
   return (
     <div>
       <PageHeader title="היסטוריית גבייה" description={`${collections.length} אצוות`} />
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
+      <div className="glass-card overflow-hidden">
         <table className="w-full text-[12px]">
           <thead><tr className="bg-muted/30 border-b border-border">
             <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px]">תאריך</th>
