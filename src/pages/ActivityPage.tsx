@@ -93,7 +93,7 @@ export function ActivityPage() {
 
       <div className="space-y-2">
         {activities.map(a => (
-          <div key={a.id} className={`bg-card rounded-xl border border-border/50 p-4 flex items-center justify-between ${a.reversed ? 'opacity-40' : ''}`}>
+          <div key={a.id} className={`glass-card p-4 flex items-center justify-between ${a.reversed ? 'opacity-40' : ''}`}>
             <div className="flex items-center gap-3">
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${actionColors[a.action] || 'bg-muted text-muted-foreground'}`}>{a.action}</span>
               <div>
