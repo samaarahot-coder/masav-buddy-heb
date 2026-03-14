@@ -74,7 +74,7 @@ export function Sidebar({ currentPage, onNavigate, collapsed, onToggle }: Sideba
       <div className="flex items-center justify-between px-3 h-14 border-b border-white/[0.06]">
         {!collapsed && (
           <div className="flex items-center gap-2.5">
-            <img src={saLogo} alt="SA מערכות" className="h-8 w-auto" />
+            <img src={appLogo} alt="מערכת מס״ב" className="h-7 w-7 rounded" />
             <div>
               <span className="text-[11px] font-bold text-white/90 block leading-tight">מערכת מס"ב</span>
               <span className="text-[9px] text-white/30">SA מערכות</span>

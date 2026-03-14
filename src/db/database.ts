@@ -206,15 +206,15 @@ export async function logActivity(
   });
 }
 
-// Load banks from CSV on first run
+// Load banks from CSV bundled in the app (not fetched at runtime)
+import csvText from '/data/snifim_he.csv?raw';
+
 export async function initializeBanks(): Promise<void> {
   const count = await db.banks.count();
   if (count > 0) return; // Already loaded
 
   try {
-    const response = await fetch('/data/snifim_he.csv');
-    const text = await response.text();
-    const lines = text.split('\n');
+    const lines = csvText.split('\n');
     if (lines.length < 2) return;
 
     const seenBanks = new Set<string>();
