@@ -207,7 +207,7 @@ export async function logActivity(
 }
 
 // Load banks from CSV bundled in the app (not fetched at runtime)
-import csvText from '/data/snifim_he.csv?raw';
+import csvText from '@/data/snifim_he.csv?raw';
 
 export async function initializeBanks(): Promise<void> {
   const count = await db.banks.count();
