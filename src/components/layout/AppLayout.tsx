@@ -12,7 +12,7 @@ interface AppLayoutProps {
 export function AppLayout({ children, currentPage, onNavigate }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Load theme from localStorage
+  // Load theme and colors from localStorage
   useEffect(() => {
     const theme = localStorage.getItem('masav-theme');
     if (theme === 'dark') document.documentElement.classList.add('dark');
@@ -21,6 +21,11 @@ export function AppLayout({ children, currentPage, onNavigate }: AppLayoutProps)
     const primaryColor = localStorage.getItem('masav-primary-color');
     if (primaryColor) {
       document.documentElement.style.setProperty('--user-primary', primaryColor);
+    }
+
+    const sidebarColor = localStorage.getItem('masav-sidebar-color');
+    if (sidebarColor) {
+      document.documentElement.style.setProperty('--sidebar-bg', sidebarColor);
     }
   }, []);
 
