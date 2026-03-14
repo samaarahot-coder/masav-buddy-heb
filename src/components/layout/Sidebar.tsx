@@ -5,7 +5,7 @@ import {
   FolderOpen, Bell, ClipboardList, BarChart3, Database,
   Moon, Sun
 } from 'lucide-react';
-import saLogo from '@/assets/sa-logo.png';
+import appLogo from '@/assets/app-logo.ico';
 import { useState, useEffect } from 'react';
 
 const menuSections = [
