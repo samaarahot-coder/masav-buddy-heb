@@ -337,7 +337,8 @@ describe('verifyFileIntegrity', () => {
 
 describe('dryRun', () => {
   it('returns valid for good data', () => {
-    const result = dryRun(makeSettings(), [makeDonor()], '2025-03-15');
+    const today = new Date().toISOString().split('T')[0];
+    const result = dryRun(makeSettings(), [makeDonor()], today);
     expect(result.valid).toBe(true);
     expect(result.totalRecords).toBe(1);
     expect(result.totalAmount).toBe(100);
