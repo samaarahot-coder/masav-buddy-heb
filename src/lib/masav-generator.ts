@@ -3,7 +3,6 @@ import { type SystemSettings, type Donor } from '@/db/database';
 /**
  * MASAV Debit File Generator (חיובים / Get Payments)
  * Based on official MASAV specification: Mifrat Hiuvim MSV
- * Reference: https://github.com/ElishaMayer/masav
  * 
  * Record length: 128 bytes (Windows-1255 encoding) + CR LF (positions 129-130)
  * Encoding: Windows-1255 (1 byte per Hebrew character)
@@ -24,7 +23,7 @@ HEBREW_TO_WIN1255['־'] = 0x2D;
 HEBREW_TO_WIN1255['׳'] = 0x27;
 HEBREW_TO_WIN1255['״'] = 0x22;
 
-function encodeWin1255(str: string): Uint8Array {
+export function encodeWin1255(str: string): Uint8Array {
   const bytes: number[] = [];
   for (let i = 0; i < str.length; i++) {
     const ch = str[i];
@@ -42,34 +41,33 @@ function encodeWin1255(str: string): Uint8Array {
 
 // ─── Field Formatting Helpers ────────────────────────────────────────
 
-function padRight(str: string, len: number, char = ' '): string {
+export function padRight(str: string, len: number, char = ' '): string {
   const s = (str || '').slice(0, len);
   return s + char.repeat(Math.max(0, len - s.length));
 }
 
-function padLeft(str: string, len: number, char = '0'): string {
+export function padLeft(str: string, len: number, char = '0'): string {
   const s = (str || '').slice(0, len);
   return char.repeat(Math.max(0, len - s.length)) + s;
 }
 
-function formatAmountTransaction(amount: number): string {
-  // Transaction: 11 shekel digits + 2 agorot digits = 13 chars total (pos 62-74)
+export function formatAmountTransaction(amount: number): string {
   const totalAgorot = Math.round(Math.abs(amount) * 100);
   const shekel = Math.floor(totalAgorot / 100);
   const agorot = totalAgorot % 100;
   return padLeft(shekel.toString(), 11) + padLeft(agorot.toString(), 2);
 }
 
-function formatAmountSummary(amount: number): string {
-  // Summary: 13 shekel digits + 2 agorot digits = 15 chars total
+export function formatAmountSummary(amount: number): string {
   const totalAgorot = Math.round(Math.abs(amount) * 100);
   const shekel = Math.floor(totalAgorot / 100);
   const agorot = totalAgorot % 100;
   return padLeft(shekel.toString(), 13) + padLeft(agorot.toString(), 2);
 }
 
-function formatDateYYMMDD(dateStr: string): string {
+export function formatDateYYMMDD(dateStr: string): string {
   const d = new Date(dateStr);
+  if (isNaN(d.getTime())) throw new Error(`תאריך לא חוקי: ${dateStr}`);
   const yy = d.getFullYear().toString().slice(-2);
   const mm = padLeft((d.getMonth() + 1).toString(), 2);
   const dd = padLeft(d.getDate().toString(), 2);
@@ -97,7 +95,71 @@ export interface MasavPreviewRecord {
   fields: Record<string, string>;
 }
 
-// ─── Validation ──────────────────────────────────────────────────────
+export interface DryRunResult {
+  valid: boolean;
+  totalRecords: number;
+  totalAmount: number;
+  duplicates: { donorName: string; accountNumber: string }[];
+  validationErrors: MasavValidationError[];
+  integrityErrors: string[];
+  fileSize: number;
+  records: MasavPreviewRecord[];
+}
+
+// ─── Israeli ID Validation (Luhn mod 10) ─────────────────────────────
+
+export function validateIsraeliId(id: string): boolean {
+  if (!id || !/^\d{1,9}$/.test(id)) return false;
+  const padded = id.padStart(9, '0');
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    let val = parseInt(padded[i]) * ((i % 2) + 1);
+    if (val > 9) val -= 9;
+    sum += val;
+  }
+  return sum % 10 === 0;
+}
+
+// ─── Israeli Bank Account Validation ─────────────────────────────────
+
+export function validateBankNumber(bankNumber: string): boolean {
+  if (!bankNumber) return false;
+  const num = parseInt(bankNumber, 10);
+  return !isNaN(num) && num >= 1 && num <= 99 && /^\d{1,2}$/.test(bankNumber);
+}
+
+export function validateBranchNumber(branchNumber: string): boolean {
+  if (!branchNumber) return false;
+  const num = parseInt(branchNumber, 10);
+  return !isNaN(num) && num >= 1 && num <= 999 && /^\d{1,3}$/.test(branchNumber);
+}
+
+export function validateAccountNumber(accountNumber: string): boolean {
+  if (!accountNumber) return false;
+  return /^\d{1,9}$/.test(accountNumber) && parseInt(accountNumber, 10) > 0;
+}
+
+// ─── Duplicate Detection ─────────────────────────────────────────────
+
+export function findDuplicates(donors: Donor[]): { donorName: string; accountNumber: string }[] {
+  const seen = new Map<string, string>();
+  const duplicates: { donorName: string; accountNumber: string }[] = [];
+  
+  for (const donor of donors) {
+    const key = `${donor.bankNumber}-${donor.branchNumber}-${donor.accountNumber}`;
+    if (seen.has(key)) {
+      duplicates.push({
+        donorName: `${donor.fullName} (כפילות עם ${seen.get(key)})`,
+        accountNumber: key,
+      });
+    } else {
+      seen.set(key, donor.fullName);
+    }
+  }
+  return duplicates;
+}
+
+// ─── Comprehensive Validation ────────────────────────────────────────
 
 export function validateDonorsForMasav(
   settings: SystemSettings,
@@ -105,47 +167,52 @@ export function validateDonorsForMasav(
 ): MasavValidationError[] {
   const errors: MasavValidationError[] = [];
 
+  // Settings validation
+  const settingsErrors: string[] = [];
   if (!settings.masvInstitutionNumber || !/^\d{1,8}$/.test(settings.masvInstitutionNumber)) {
-    errors.push({
-      donorName: 'הגדרות מערכת',
-      donorId: 0,
-      errors: ['מספר מוסד מס"ב חייב להיות עד 8 ספרות'],
-    });
+    settingsErrors.push('מספר מוסד מס"ב חייב להיות עד 8 ספרות');
   }
-
   if (!settings.sendingInstitutionNumber && !settings.masvInstitutionNumber) {
-    errors.push({
-      donorName: 'הגדרות מערכת',
-      donorId: 0,
-      errors: ['מספר מוסד שולח חייב להיות מוגדר'],
-    });
+    settingsErrors.push('מספר מוסד שולח חייב להיות מוגדר');
+  }
+  if (!settings.organizationName || settings.organizationName.trim().length === 0) {
+    settingsErrors.push('שם הארגון חייב להיות מוגדר');
+  }
+  if (settingsErrors.length > 0) {
+    errors.push({ donorName: 'הגדרות מערכת', donorId: 0, errors: settingsErrors });
   }
 
+  // Per-donor validation
   for (const donor of donors) {
     const donorErrors: string[] = [];
 
-    if (!donor.bankNumber || !/^\d{1,2}$/.test(donor.bankNumber)) {
-      donorErrors.push('מספר בנק חייב להיות 1-2 ספרות');
+    if (!validateBankNumber(donor.bankNumber)) {
+      donorErrors.push('מספר בנק לא תקין (1-2 ספרות, 1-99)');
     }
-    if (!donor.branchNumber || !/^\d{1,3}$/.test(donor.branchNumber)) {
-      donorErrors.push('מספר סניף חייב להיות 1-3 ספרות');
+    if (!validateBranchNumber(donor.branchNumber)) {
+      donorErrors.push('מספר סניף לא תקין (1-3 ספרות, 1-999)');
     }
-    if (!donor.accountNumber || !/^\d{1,9}$/.test(donor.accountNumber)) {
-      donorErrors.push('מספר חשבון חייב להכיל ספרות בלבד (עד 9)');
+    if (!validateAccountNumber(donor.accountNumber)) {
+      donorErrors.push('מספר חשבון לא תקין (1-9 ספרות, גדול מ-0)');
     }
     if (!donor.monthlyAmount || donor.monthlyAmount <= 0) {
-      donorErrors.push('סכום חייב להיות גדול מאפס');
+      donorErrors.push('סכום חיוב חייב להיות גדול מ-0');
     }
     if (donor.monthlyAmount > 99999999999.99) {
-      donorErrors.push('סכום חורג מהמקסימום המותר');
+      donorErrors.push('סכום חורג מהמקסימום המותר (₪99,999,999,999.99)');
     }
     if (!donor.idNumber || !/^\d{1,9}$/.test(donor.idNumber)) {
-      donorErrors.push('מספר זהות חייב להכיל ספרות בלבד (עד 9)');
+      donorErrors.push('מספר זהות חייב להכיל 1-9 ספרות');
+    } else if (!validateIsraeliId(donor.idNumber)) {
+      donorErrors.push('מספר זהות לא עובר בדיקת ספרת ביקורת');
+    }
+    if (!donor.fullName || donor.fullName.trim().length === 0) {
+      donorErrors.push('שם מלא חייב להיות מוגדר');
     }
 
     if (donorErrors.length > 0) {
       errors.push({
-        donorName: donor.fullName,
+        donorName: donor.fullName || `תורם #${donor.id}`,
         donorId: donor.id || 0,
         errors: donorErrors,
       });
@@ -155,135 +222,265 @@ export function validateDonorsForMasav(
   return errors;
 }
 
+// ─── Date Validation ─────────────────────────────────────────────────
+
+export function validateCollectionDate(dateStr: string): string[] {
+  const errors: string[] = [];
+  if (!dateStr) {
+    errors.push('תאריך גבייה חובה');
+    return errors;
+  }
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) {
+    errors.push('תאריך לא חוקי');
+    return errors;
+  }
+  // Can't be more than 60 days in the past
+  const sixtyDaysAgo = new Date();
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+  if (d < sixtyDaysAgo) {
+    errors.push('תאריך גבייה ישן מדי (מעל 60 יום אחורה)');
+  }
+  // Can't be more than 90 days in the future
+  const ninetyDaysAhead = new Date();
+  ninetyDaysAhead.setDate(ninetyDaysAhead.getDate() + 90);
+  if (d > ninetyDaysAhead) {
+    errors.push('תאריך גבייה רחוק מדי (מעל 90 יום קדימה)');
+  }
+  return errors;
+}
+
 // ─── Record Builders ─────────────────────────────────────────────────
 
-/**
- * Header Record (K) - Same for both credit and debit files
- * 
- * Pos 1     (1)  Record ID = 'K'
- * Pos 2-9   (8)  Institution/subject code (N)
- * Pos 10-11 (2)  Currency = '00' (N)
- * Pos 12-17 (6)  Date of payment YYMMDD (N)
- * Pos 18    (1)  Filler = '0' (N)
- * Pos 19-21 (3)  Serial number = '001' (N)
- * Pos 22    (1)  Filler = '0' (N)
- * Pos 23-28 (6)  Date tape created YYMMDD (N)
- * Pos 29-33 (5)  Sending institution number (N)
- * Pos 34-39 (6)  Filler = zeros (N)
- * Pos 40-69 (30) Name of institution (X, right-aligned)
- * Pos 70-125(56) Filler = blanks (X)
- * Pos 126-128(3) Header ID = 'KOT' (X)
- */
-function buildHeaderRecord(settings: SystemSettings, collectionDate: string): string {
+export function buildHeaderRecord(settings: SystemSettings, collectionDate: string): string {
   let rec = '';
-  rec += 'K';                                                          // 1
-  rec += padLeft(settings.masvInstitutionNumber, 8);                   // 2-9
-  rec += '00';                                                         // 10-11
-  rec += formatDateYYMMDD(collectionDate);                             // 12-17
-  rec += '0';                                                          // 18
-  rec += '001';                                                        // 19-21
-  rec += '0';                                                          // 22
-  rec += formatDateYYMMDD(new Date().toISOString());                   // 23-28
+  rec += 'K';
+  rec += padLeft(settings.masvInstitutionNumber, 8);
+  rec += '00';
+  rec += formatDateYYMMDD(collectionDate);
+  rec += '0';
+  rec += '001';
+  rec += '0';
+  rec += formatDateYYMMDD(new Date().toISOString());
   const sendingInst = settings.sendingInstitutionNumber || settings.masvInstitutionNumber;
-  rec += padLeft(sendingInst, 5);                                      // 29-33
-  rec += '000000';                                                     // 34-39
-  rec += padRight(settings.organizationName, 30);                      // 40-69
-  rec += padRight('', 56);                                             // 70-125
-  rec += 'KOT';                                                        // 126-128
+  rec += padLeft(sendingInst, 5);
+  rec += '000000';
+  rec += padRight(settings.organizationName, 30);
+  rec += padRight('', 56);
+  rec += 'KOT';
   
   if (rec.length > 128) rec = rec.slice(0, 128);
   if (rec.length < 128) rec = rec + ' '.repeat(128 - rec.length);
   return rec;
 }
 
-/**
- * Debit Movement Record - MASAV Get Payments (חיובים)
- * 
- * Pos 1     (1)  Record ID = '1' (X)
- * Pos 2-9   (8)  Institution/subject (N)
- * Pos 10-11 (2)  Currency = '00' (N)
- * Pos 12-17 (6)  Filler = '000000' (N)
- * Pos 18-19 (2)  Bank code (N)
- * Pos 20-22 (3)  Branch number (N)
- * Pos 23-26 (4)  Account type = '0000' (N)
- * Pos 27-35 (9)  Account number (N)
- * Pos 36    (1)  Filler = '0' (N)
- * Pos 37-45 (9)  ID number (N)
- * Pos 46-61 (16) Name (X, right-aligned for Hebrew)
- * Pos 62-74 (13) Amount: 11 shekel + 2 agorot (N)
- * Pos 75-94 (20) Reference/payee number (N)
- * Pos 95-102(8)  Payment period YYMM+YYMM (N)
- * Pos 103-105(3) Text code = '000' (N)
- * Pos 106-108(3) Movement type = '504' (DEBIT) (N)
- * Pos 109-126(18) Filler = zeros (N)
- * Pos 127-128(2) Filler = blanks (X)
- */
-function buildTransactionRecord(settings: SystemSettings, donor: Donor, _collectionDate: string): string {
+export function buildTransactionRecord(settings: SystemSettings, donor: Donor, _collectionDate: string): string {
   const period = getCurrentYYMM();
   
   let rec = '';
-  rec += '1';                                                          // 1
-  rec += padLeft(settings.masvInstitutionNumber, 8);                   // 2-9
-  rec += '00';                                                         // 10-11
-  rec += '000000';                                                     // 12-17
-  rec += padLeft(donor.bankNumber, 2);                                 // 18-19
-  rec += padLeft(donor.branchNumber, 3);                               // 20-22
-  rec += '0000';                                                       // 23-26
-  rec += padLeft(donor.accountNumber, 9);                              // 27-35
-  rec += '0';                                                          // 36
-  rec += padLeft(donor.idNumber || '0', 9);                            // 37-45
-  rec += padRight(donor.fullName, 16);                                 // 46-61
-  rec += formatAmountTransaction(donor.monthlyAmount);                 // 62-74 (11+2=13)
-  rec += padLeft(donor.authorizationNumber || '', 20);                 // 75-94
-  rec += period + period;                                              // 95-102
-  rec += '000';                                                        // 103-105
-  rec += '504';                                                        // 106-108: DEBIT type (חיוב)
-  rec += padLeft('', 18, '0');                                         // 109-126
-  rec += '  ';                                                         // 127-128
+  rec += '1';
+  rec += padLeft(settings.masvInstitutionNumber, 8);
+  rec += '00';
+  rec += '000000';
+  rec += padLeft(donor.bankNumber, 2);
+  rec += padLeft(donor.branchNumber, 3);
+  rec += '0000';
+  rec += padLeft(donor.accountNumber, 9);
+  rec += '0';
+  rec += padLeft(donor.idNumber || '0', 9);
+  rec += padRight(donor.fullName, 16);
+  rec += formatAmountTransaction(donor.monthlyAmount);
+  rec += padLeft(donor.authorizationNumber || '', 20);
+  rec += period + period;
+  rec += '000';
+  rec += '504';
+  rec += padLeft('', 18, '0');
+  rec += '  ';
   
   if (rec.length > 128) rec = rec.slice(0, 128);
   if (rec.length < 128) rec = rec + ' '.repeat(128 - rec.length);
   return rec;
 }
 
-/**
- * Debit Summary Record (5) - Get Payments (חיובים)
- * IMPORTANT: For debit files, positions 7&8 and 9&10 are SWAPPED vs credit files
- * 
- * Pos 1     (1)  Record ID = '5' (X)
- * Pos 2-9   (8)  Institution/subject (N)
- * Pos 10-11 (2)  Currency = '00' (N)
- * Pos 12-17 (6)  Date of payment YYMMDD (N)
- * Pos 18    (1)  Filler = '0' (N)
- * Pos 19-21 (3)  Serial number = '001' (N)
- * Pos 22-36 (15) Filler = zeros (credits total, empty for debit file) (N)
- * Pos 37-51 (15) Sum of debit movements: 13 shekel + 2 agorot (N)
- * Pos 52-58 (7)  Filler = zeros (credit count, empty for debit file) (N)
- * Pos 59-65 (7)  Number of debit movements (N)
- * Pos 66-128(63) Filler = blanks (X)
- */
-function buildSummaryRecord(
+export function buildSummaryRecord(
   settings: SystemSettings,
   collectionDate: string,
   totalAmount: number,
   recordCount: number
 ): string {
   let rec = '';
-  rec += '5';                                                          // 1
-  rec += padLeft(settings.masvInstitutionNumber, 8);                   // 2-9
-  rec += '00';                                                         // 10-11
-  rec += formatDateYYMMDD(collectionDate);                             // 12-17
-  rec += '0';                                                          // 18
-  rec += '001';                                                        // 19-21
-  rec += padLeft('', 15, '0');                                         // 22-36: Credits total = zeros (debit file)
-  rec += formatAmountSummary(totalAmount);                             // 37-51: Debits total (13 shekel + 2 agorot)
-  rec += padLeft('', 7, '0');                                          // 52-58: Credits count = zeros
-  rec += padLeft(recordCount.toString(), 7, '0');                      // 59-65: Debits count
-  rec += padRight('', 63);                                             // 66-128: Filler blanks
+  rec += '5';
+  rec += padLeft(settings.masvInstitutionNumber, 8);
+  rec += '00';
+  rec += formatDateYYMMDD(collectionDate);
+  rec += '0';
+  rec += '001';
+  rec += padLeft('', 15, '0');
+  rec += formatAmountSummary(totalAmount);
+  rec += padLeft('', 7, '0');
+  rec += padLeft(recordCount.toString(), 7, '0');
+  rec += padRight('', 63);
   
   if (rec.length > 128) rec = rec.slice(0, 128);
   if (rec.length < 128) rec = rec + ' '.repeat(128 - rec.length);
   return rec;
+}
+
+// ─── File Integrity Check ────────────────────────────────────────────
+
+export function verifyFileIntegrity(lines: string[], donors: Donor[], expectedTotal: number): string[] {
+  const errors: string[] = [];
+  
+  // Check record count: header + N transactions + summary + end = N + 3
+  const expectedLines = donors.length + 3;
+  if (lines.length !== expectedLines) {
+    errors.push(`מספר רשומות שגוי: צפוי ${expectedLines}, נמצא ${lines.length}`);
+  }
+  
+  // Check all records are 128 chars
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].length !== 128) {
+      errors.push(`רשומה ${i + 1} באורך ${lines[i].length} במקום 128 תווים`);
+    }
+  }
+  
+  // Check header starts with K
+  if (lines.length > 0 && lines[0][0] !== 'K') {
+    errors.push('רשומת כותרת לא מתחילה ב-K');
+  }
+  
+  // Check all transaction records start with '1'
+  for (let i = 1; i < lines.length - 2; i++) {
+    if (lines[i][0] !== '1') {
+      errors.push(`רשומת תנועה ${i} לא מתחילה ב-1`);
+    }
+  }
+  
+  // Check summary record starts with '5'
+  if (lines.length >= 2 && lines[lines.length - 2][0] !== '5') {
+    errors.push('רשומת סיכום לא מתחילה ב-5');
+  }
+  
+  // Check end record is all 9s
+  if (lines.length >= 1 && lines[lines.length - 1] !== '9'.repeat(128)) {
+    errors.push('רשומת סיום לא תקינה');
+  }
+  
+  // Verify summary amount matches sum of transactions
+  if (lines.length >= 2) {
+    const summaryLine = lines[lines.length - 2];
+    const summaryAmountStr = summaryLine.substring(36, 51); // pos 37-51 (0-indexed: 36-50)
+    const summaryAmount = parseInt(summaryAmountStr, 10) / 100;
+    const expectedAgorot = Math.round(expectedTotal * 100) / 100;
+    if (Math.abs(summaryAmount - expectedAgorot) > 0.01) {
+      errors.push(`סכום סיכום (₪${summaryAmount.toLocaleString()}) לא תואם סכום תנועות (₪${expectedAgorot.toLocaleString()})`);
+    }
+    
+    // Verify record count in summary
+    const summaryCountStr = summaryLine.substring(58, 65); // pos 59-65
+    const summaryCount = parseInt(summaryCountStr, 10);
+    if (summaryCount !== donors.length) {
+      errors.push(`מספר תנועות בסיכום (${summaryCount}) לא תואם מספר תורמים (${donors.length})`);
+    }
+  }
+  
+  return errors;
+}
+
+// ─── Dry Run ─────────────────────────────────────────────────────────
+
+export function dryRun(
+  settings: SystemSettings,
+  donors: Donor[],
+  collectionDate: string
+): DryRunResult {
+  const validationErrors = validateDonorsForMasav(settings, donors);
+  const duplicates = findDuplicates(donors);
+  const dateErrors = validateCollectionDate(collectionDate);
+  
+  if (dateErrors.length > 0) {
+    validationErrors.push({
+      donorName: 'תאריך גבייה',
+      donorId: 0,
+      errors: dateErrors,
+    });
+  }
+  
+  const totalAmount = donors.reduce((sum, d) => sum + d.monthlyAmount, 0);
+  
+  // Build records for preview
+  const records: MasavPreviewRecord[] = [];
+  const lines: string[] = [];
+  
+  try {
+    const headerLine = buildHeaderRecord(settings, collectionDate);
+    lines.push(headerLine);
+    records.push({
+      type: 'header',
+      raw: headerLine,
+      fields: {
+        'סוג רשומה': 'K - כותרת',
+        'מספר מוסד': padLeft(settings.masvInstitutionNumber, 8),
+        'מטבע': '00 (שקל)',
+        'תאריך תשלום': collectionDate,
+        'תאריך יצירה': new Date().toISOString().split('T')[0],
+        'שם מוסד': settings.organizationName,
+      },
+    });
+    
+    for (const donor of donors) {
+      const txLine = buildTransactionRecord(settings, donor, collectionDate);
+      lines.push(txLine);
+      records.push({
+        type: 'transaction',
+        raw: txLine,
+        fields: {
+          'סוג רשומה': '1 - חיוב',
+          'שם': donor.fullName,
+          'בנק': padLeft(donor.bankNumber, 2),
+          'סניף': padLeft(donor.branchNumber, 3),
+          'חשבון': padLeft(donor.accountNumber, 9),
+          'ת.ז.': padLeft(donor.idNumber, 9),
+          'סכום': `₪${donor.monthlyAmount.toLocaleString()}`,
+          'סוג תנועה': '504 (חיוב)',
+        },
+      });
+    }
+    
+    const summaryLine = buildSummaryRecord(settings, collectionDate, totalAmount, donors.length);
+    lines.push(summaryLine);
+    records.push({
+      type: 'summary',
+      raw: summaryLine,
+      fields: {
+        'סוג רשומה': '5 - סיכום',
+        'סה"כ חיובים': `₪${totalAmount.toLocaleString()}`,
+        'מספר תנועות': donors.length.toString(),
+      },
+    });
+    
+    lines.push('9'.repeat(128));
+  } catch {
+    // If build fails, we still return the partial result
+  }
+  
+  const integrityErrors = lines.length > 0 ? verifyFileIntegrity(lines, donors, totalAmount) : ['שגיאה ביצירת הקובץ'];
+  
+  // Estimate file size: 128 bytes per record + 2 bytes CRLF between records
+  const fileSize = lines.length * 128 + (lines.length - 1) * 2;
+  
+  const hasErrors = validationErrors.length > 0 || duplicates.length > 0 || integrityErrors.length > 0;
+  
+  return {
+    valid: !hasErrors,
+    totalRecords: donors.length,
+    totalAmount,
+    duplicates,
+    validationErrors,
+    integrityErrors,
+    fileSize,
+    records,
+  };
 }
 
 // ─── Public API ──────────────────────────────────────────────────────
@@ -293,53 +490,7 @@ export function generateMasavPreview(
   donors: Donor[],
   collectionDate: string
 ): MasavPreviewRecord[] {
-  const records: MasavPreviewRecord[] = [];
-  
-  records.push({
-    type: 'header',
-    raw: buildHeaderRecord(settings, collectionDate),
-    fields: {
-      'סוג רשומה': 'K - כותרת',
-      'מספר מוסד': padLeft(settings.masvInstitutionNumber, 8),
-      'מטבע': '00 (שקל)',
-      'תאריך תשלום': collectionDate,
-      'תאריך יצירה': new Date().toISOString().split('T')[0],
-      'מוסד שולח': padLeft(settings.sendingInstitutionNumber || settings.masvInstitutionNumber, 5),
-      'שם מוסד': settings.organizationName,
-    },
-  });
-
-  let totalAmount = 0;
-  for (const donor of donors) {
-    totalAmount += donor.monthlyAmount;
-    records.push({
-      type: 'transaction',
-      raw: buildTransactionRecord(settings, donor, collectionDate),
-      fields: {
-        'סוג רשומה': '1 - תנועה (חיוב)',
-        'שם': donor.fullName,
-        'בנק': padLeft(donor.bankNumber, 2),
-        'סניף': padLeft(donor.branchNumber, 3),
-        'חשבון': padLeft(donor.accountNumber, 9),
-        'ת.ז.': padLeft(donor.idNumber, 9),
-        'סכום': `₪${donor.monthlyAmount.toLocaleString()}`,
-        'סוג תנועה': '504 (חיוב)',
-      },
-    });
-  }
-
-  records.push({
-    type: 'summary',
-    raw: buildSummaryRecord(settings, collectionDate, totalAmount, donors.length),
-    fields: {
-      'סוג רשומה': '5 - סיכום',
-      'סה"כ חיובים': `₪${totalAmount.toLocaleString()}`,
-      'מספר תנועות חיוב': donors.length.toString(),
-      'תאריך תשלום': collectionDate,
-    },
-  });
-
-  return records;
+  return dryRun(settings, donors, collectionDate).records;
 }
 
 export function generateMasavBlob(
@@ -359,6 +510,12 @@ export function generateMasavBlob(
 
   lines.push(buildSummaryRecord(settings, collectionDate, totalAmount, donors.length));
   lines.push('9'.repeat(128));
+
+  // Integrity check before export
+  const integrityErrors = verifyFileIntegrity(lines, donors, totalAmount);
+  if (integrityErrors.length > 0) {
+    throw new Error(`שגיאות תקינות בקובץ:\n${integrityErrors.join('\n')}`);
+  }
 
   const encodedLines: Uint8Array[] = lines.map(line => encodeWin1255(line));
   const crlf = new Uint8Array([0x0D, 0x0A]);
