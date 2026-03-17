@@ -359,7 +359,8 @@ describe('dryRun', () => {
       makeDonor({ id: 1, fullName: 'A' }),
       makeDonor({ id: 2, fullName: 'B' }),
     ];
-    const result = dryRun(makeSettings(), donors, '2025-03-15');
+    const today = new Date().toISOString().split('T')[0];
+    const result = dryRun(makeSettings(), donors, today);
     expect(result.duplicates).toHaveLength(1);
     expect(result.valid).toBe(false);
   });
