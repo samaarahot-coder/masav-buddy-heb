@@ -8,8 +8,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { generateMasavBlob, validateDonorsForMasav, type MasavValidationError } from '@/lib/masav-generator';
-import { FileText, AlertTriangle, CheckCircle, Info, Zap, Download } from 'lucide-react';
+import { generateMasavBlob, validateDonorsForMasav, dryRun, type MasavValidationError, type DryRunResult } from '@/lib/masav-generator';
+import { AlertTriangle, CheckCircle, Info, Zap, Eye, ShieldCheck, Copy, FileWarning } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export function CollectionPage() {
   const [collectionDate, setCollectionDate] = useState(new Date().toISOString().split('T')[0]);
@@ -23,6 +24,8 @@ export function CollectionPage() {
   const [lastFileName, setLastFileName] = useState('');
   const [lastCollectionId, setLastCollectionId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
+  const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null);
+  const [dryRunOpen, setDryRunOpen] = useState(false);
 
   useEffect(() => { loadEligibleDonors(); }, [collectionDate, groupFilter, includeAlreadyCollected]);
   useEffect(() => { db.donorGroups.toArray().then(setGroups); }, []);
@@ -52,6 +55,18 @@ export function CollectionPage() {
     setDonors(prev => prev.map(d => ({ ...d, selected: checked })));
   }
 
+  async function runDryRun() {
+    const selected = donors.filter(d => d.selected);
+    if (selected.length === 0) { toast.error('לא נבחרו תורמים'); return; }
+
+    const settings = await getSettings();
+    if (!settings?.masvInstitutionNumber) { toast.error('יש להגדיר פרטי מוסד בהגדרות'); return; }
+
+    const result = dryRun(settings, selected, collectionDate);
+    setDryRunResult(result);
+    setDryRunOpen(true);
+  }
+
   async function createAndDownload() {
     const selected = donors.filter(d => d.selected);
     if (selected.length === 0) { toast.error('לא נבחרו תורמים'); return; }
@@ -63,6 +78,15 @@ export function CollectionPage() {
     if (errors.length > 0) {
       setValidationErrors(errors);
       setErrorsOpen(true);
+      return;
+    }
+
+    // Check for duplicates
+    const result = dryRun(settings, selected, collectionDate);
+    if (result.duplicates.length > 0) {
+      setDryRunResult(result);
+      setDryRunOpen(true);
+      toast.error('נמצאו כפילויות! יש לתקן לפני יצירת הקובץ');
       return;
     }
 
@@ -110,7 +134,7 @@ export function CollectionPage() {
         }
       }
 
-      // Generate and download
+      // Generate and download with integrity check
       const blob = generateMasavBlob(settings, selected, collectionDate);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -125,8 +149,9 @@ export function CollectionPage() {
       setLastCollectionId(collectionId as number);
       setSuccessOpen(true);
       loadEligibleDonors();
-    } catch {
-      toast.error('שגיאה ביצירת קובץ מס"ב');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'שגיאה ביצירת קובץ מס"ב';
+      toast.error(message);
     } finally {
       setCreating(false);
     }
@@ -173,8 +198,8 @@ export function CollectionPage() {
         </div>
       </div>
 
-      {/* Summary + Action */}
-      <div className="glass-card p-4 mb-4 flex items-center justify-between">
+      {/* Summary + Actions */}
+      <div className="glass-card p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <div className="text-center">
             <p className="text-2xl font-bold text-primary">{selectedCount}</p>
@@ -186,10 +211,16 @@ export function CollectionPage() {
             <p className="text-[10px] text-muted-foreground">סכום כולל</p>
           </div>
         </div>
-        <Button onClick={createAndDownload} disabled={selectedCount === 0 || creating} className="gap-2 h-10 px-6 text-sm font-semibold">
-          <Zap size={16} />
-          {creating ? 'יוצר...' : 'צור קובץ מס"ב והורד'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={runDryRun} disabled={selectedCount === 0} className="gap-2 h-10 text-sm">
+            <Eye size={16} />
+            סימולציה (Dry Run)
+          </Button>
+          <Button onClick={createAndDownload} disabled={selectedCount === 0 || creating} className="gap-2 h-10 px-6 text-sm font-semibold">
+            <Zap size={16} />
+            {creating ? 'יוצר...' : 'צור קובץ מס"ב והורד'}
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
@@ -203,6 +234,7 @@ export function CollectionPage() {
             <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px]">בנק</th>
             <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px]">סניף</th>
             <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px]">חשבון</th>
+            <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px]">ת.ז.</th>
             <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px]">סכום</th>
             <th className="text-right p-2.5 font-medium text-muted-foreground text-[11px]">יום חיוב</th>
           </tr></thead>
@@ -214,14 +246,101 @@ export function CollectionPage() {
                 <td className="p-2.5 text-muted-foreground">{d.bankNumber}</td>
                 <td className="p-2.5 text-muted-foreground">{d.branchNumber}</td>
                 <td className="p-2.5 text-muted-foreground font-mono text-[12px]">{d.accountNumber}</td>
+                <td className="p-2.5 text-muted-foreground font-mono text-[12px]">{d.idNumber}</td>
                 <td className="p-2.5 font-semibold">₪{d.monthlyAmount.toLocaleString()}</td>
                 <td className="p-2.5 text-muted-foreground">{d.chargeDay}</td>
               </tr>
             ))}
-            {donors.length === 0 && <tr><td colSpan={7} className="p-12 text-center text-muted-foreground text-sm">אין תורמים זכאים לגבייה בתאריך זה</td></tr>}
+            {donors.length === 0 && <tr><td colSpan={8} className="p-12 text-center text-muted-foreground text-sm">אין תורמים זכאים לגבייה בתאריך זה</td></tr>}
           </tbody>
         </table>
       </div>
+
+      {/* Dry Run Dialog */}
+      <Dialog open={dryRunOpen} onOpenChange={setDryRunOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm">
+              <ShieldCheck size={18} className={dryRunResult?.valid ? 'text-emerald-600' : 'text-destructive'} />
+              תוצאות סימולציה (Dry Run)
+            </DialogTitle>
+          </DialogHeader>
+
+          {dryRunResult && (
+            <div className="space-y-4">
+              {/* Status banner */}
+              <Alert variant={dryRunResult.valid ? 'default' : 'destructive'}>
+                {dryRunResult.valid ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                <AlertTitle>{dryRunResult.valid ? 'הקובץ תקין ומוכן לייצוא' : 'נמצאו בעיות שיש לתקן'}</AlertTitle>
+                <AlertDescription className="text-xs mt-1">
+                  {dryRunResult.totalRecords} רשומות | ₪{dryRunResult.totalAmount.toLocaleString()} | ~{(dryRunResult.fileSize / 1024).toFixed(1)} KB
+                </AlertDescription>
+              </Alert>
+
+              {/* Duplicates */}
+              {dryRunResult.duplicates.length > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Copy size={14} className="text-amber-600" />
+                    <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">כפילויות ({dryRunResult.duplicates.length})</span>
+                  </div>
+                  {dryRunResult.duplicates.map((dup, i) => (
+                    <p key={i} className="text-[11px] text-amber-700 dark:text-amber-400">• {dup.donorName} — חשבון {dup.accountNumber}</p>
+                  ))}
+                </div>
+              )}
+
+              {/* Validation errors */}
+              {dryRunResult.validationErrors.length > 0 && (
+                <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <FileWarning size={14} className="text-destructive" />
+                    <span className="text-xs font-semibold text-destructive">שגיאות אימות ({dryRunResult.validationErrors.length})</span>
+                  </div>
+                  {dryRunResult.validationErrors.map((err, i) => (
+                    <div key={i} className="mb-2">
+                      <p className="text-[11px] font-semibold">{err.donorName}</p>
+                      {err.errors.map((e, j) => <p key={j} className="text-[11px] text-destructive mr-2">• {e}</p>)}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Integrity errors */}
+              {dryRunResult.integrityErrors.length > 0 && (
+                <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <AlertTriangle size={14} className="text-destructive" />
+                    <span className="text-xs font-semibold text-destructive">שגיאות תקינות קובץ</span>
+                  </div>
+                  {dryRunResult.integrityErrors.map((e, i) => <p key={i} className="text-[11px] text-destructive">• {e}</p>)}
+                </div>
+              )}
+
+              {/* Success details */}
+              {dryRunResult.valid && (
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3 text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+                  <p>✓ כל השדות מאומתים</p>
+                  <p>✓ אין כפילויות</p>
+                  <p>✓ סכומים תואמים לסיכום</p>
+                  <p>✓ מספר רשומות תואם</p>
+                  <p>✓ פורמט 128 תווים לרשומה</p>
+                  <p>✓ קידוד Windows-1255</p>
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" onClick={() => setDryRunOpen(false)}>סגור</Button>
+                {dryRunResult.valid && (
+                  <Button size="sm" onClick={() => { setDryRunOpen(false); createAndDownload(); }} className="gap-1.5">
+                    <Zap size={14} /> צור והורד
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Success Dialog */}
       <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
