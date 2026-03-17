@@ -348,7 +348,8 @@ describe('dryRun', () => {
   });
 
   it('detects validation errors', () => {
-    const result = dryRun(makeSettings(), [makeDonor({ bankNumber: '' })], '2025-03-15');
+    const today = new Date().toISOString().split('T')[0];
+    const result = dryRun(makeSettings(), [makeDonor({ bankNumber: '' })], today);
     expect(result.valid).toBe(false);
     expect(result.validationErrors.length).toBeGreaterThan(0);
   });
