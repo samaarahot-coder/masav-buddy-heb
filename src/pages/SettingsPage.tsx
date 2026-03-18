@@ -76,10 +76,10 @@ export function SettingsPage() {
     setTheme(t);
     if (t === 'dark') {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('masav-theme', 'dark');
+      localStorage.setItem('trombon-theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('masav-theme', 'light');
+      localStorage.setItem('trombon-theme', 'light');
     }
     toast.success(t === 'dark' ? 'מצב כהה הופעל' : 'מצב בהיר הופעל');
   }
