@@ -39,8 +39,8 @@ const sidebarPresets = [
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<Omit<SystemSettings, 'id'>>(defaultSettings);
-  const [selectedColor, setSelectedColor] = useState(() => localStorage.getItem('masav-primary-color') || '217 91% 60%');
-  const [selectedSidebarColor, setSelectedSidebarColor] = useState(() => localStorage.getItem('masav-sidebar-color') || '222 28% 12%');
+  const [selectedColor, setSelectedColor] = useState(() => localStorage.getItem('trombon-primary-color') || '217 91% 60%');
+  const [selectedSidebarColor, setSelectedSidebarColor] = useState(() => localStorage.getItem('trombon-sidebar-color') || '222 28% 12%');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => 
     document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   );
