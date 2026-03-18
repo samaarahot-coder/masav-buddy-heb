@@ -1,7 +1,10 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "trombon",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "טרומבון - מערכת ניהול גביות מס״ב",
+  "author": "SA מערכות",
+  "main": "electron/main.js",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +13,35 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:8080 && cross-env ELECTRON_DEV=1 electron .\"",
+    "electron:build": "vite build && electron-builder --win",
+    "electron:build:dir": "vite build && electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "com.sa-systems.trombon",
+    "productName": "טרומבון",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "public/favicon.ico"
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "public/favicon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerLanguages": ["he"],
+      "language": "1037",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "טרומבון"
+    }
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
