@@ -67,7 +67,7 @@ export function SettingsPage() {
 
   function applySidebarColor(color: string) {
     setSelectedSidebarColor(color);
-    localStorage.setItem('masav-sidebar-color', color);
+    localStorage.setItem('trombon-sidebar-color', color);
     document.documentElement.style.setProperty('--sidebar-bg', color);
     toast.success('צבע התפריט עודכן');
   }
