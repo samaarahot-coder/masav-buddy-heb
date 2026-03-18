@@ -94,7 +94,7 @@ export function CollectionPage() {
 
     try {
       const totalAmount = selected.reduce((sum, d) => sum + d.monthlyAmount, 0);
-      const fileName = `masav_${collectionDate.replace(/-/g, '')}.msx`;
+      const fileName = `trombon_${collectionDate.replace(/-/g, '')}.msx`;
       const date = new Date(collectionDate);
       const currentMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
