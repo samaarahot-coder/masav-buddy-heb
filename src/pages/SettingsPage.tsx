@@ -60,7 +60,7 @@ export function SettingsPage() {
 
   function applyColor(color: string) {
     setSelectedColor(color);
-    localStorage.setItem('masav-primary-color', color);
+    localStorage.setItem('trombon-primary-color', color);
     document.documentElement.style.setProperty('--user-primary', color);
     toast.success('צבע המערכת עודכן');
   }
