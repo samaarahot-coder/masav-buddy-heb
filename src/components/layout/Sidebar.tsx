@@ -61,7 +61,7 @@ export function Sidebar({ currentPage, onNavigate, collapsed, onToggle }: Sideba
     setDark(next);
     if (next) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('masav-theme', 'dark');
+      localStorage.setItem('trombon-theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('masav-theme', 'light');
