@@ -68,7 +68,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
     <div>
       <PageHeader
         title="דשבורד"
-        description="סקירה כללית של המערכת"
+        description="טרומבון — סקירה כללית"
         actions={
           <div className="flex gap-2">
             <Button onClick={() => onNavigate('donors')} size="sm" className="gap-1.5 text-xs"><Plus size={13} /> תורם חדש</Button>

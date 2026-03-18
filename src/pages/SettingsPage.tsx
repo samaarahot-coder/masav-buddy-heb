@@ -39,8 +39,8 @@ const sidebarPresets = [
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<Omit<SystemSettings, 'id'>>(defaultSettings);
-  const [selectedColor, setSelectedColor] = useState(() => localStorage.getItem('masav-primary-color') || '217 91% 60%');
-  const [selectedSidebarColor, setSelectedSidebarColor] = useState(() => localStorage.getItem('masav-sidebar-color') || '222 28% 12%');
+  const [selectedColor, setSelectedColor] = useState(() => localStorage.getItem('trombon-primary-color') || '217 91% 60%');
+  const [selectedSidebarColor, setSelectedSidebarColor] = useState(() => localStorage.getItem('trombon-sidebar-color') || '222 28% 12%');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => 
     document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   );
@@ -60,14 +60,14 @@ export function SettingsPage() {
 
   function applyColor(color: string) {
     setSelectedColor(color);
-    localStorage.setItem('masav-primary-color', color);
+    localStorage.setItem('trombon-primary-color', color);
     document.documentElement.style.setProperty('--user-primary', color);
     toast.success('צבע המערכת עודכן');
   }
 
   function applySidebarColor(color: string) {
     setSelectedSidebarColor(color);
-    localStorage.setItem('masav-sidebar-color', color);
+    localStorage.setItem('trombon-sidebar-color', color);
     document.documentElement.style.setProperty('--sidebar-bg', color);
     toast.success('צבע התפריט עודכן');
   }
@@ -76,10 +76,10 @@ export function SettingsPage() {
     setTheme(t);
     if (t === 'dark') {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('masav-theme', 'dark');
+      localStorage.setItem('trombon-theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('masav-theme', 'light');
+      localStorage.setItem('trombon-theme', 'light');
     }
     toast.success(t === 'dark' ? 'מצב כהה הופעל' : 'מצב בהיר הופעל');
   }

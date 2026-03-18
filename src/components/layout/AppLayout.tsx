@@ -14,16 +14,16 @@ export function AppLayout({ children, currentPage, onNavigate }: AppLayoutProps)
 
   // Load theme and colors from localStorage
   useEffect(() => {
-    const theme = localStorage.getItem('masav-theme');
+    const theme = localStorage.getItem('trombon-theme');
     if (theme === 'dark') document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
 
-    const primaryColor = localStorage.getItem('masav-primary-color');
+    const primaryColor = localStorage.getItem('trombon-primary-color');
     if (primaryColor) {
       document.documentElement.style.setProperty('--user-primary', primaryColor);
     }
 
-    const sidebarColor = localStorage.getItem('masav-sidebar-color');
+    const sidebarColor = localStorage.getItem('trombon-sidebar-color');
     if (sidebarColor) {
       document.documentElement.style.setProperty('--sidebar-bg', sidebarColor);
     }
