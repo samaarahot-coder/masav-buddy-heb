@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "טרומבון - מערכת ניהול גביות מס״ב",
   "author": "SA מערכות",
-  "main": "electron/main.js",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
