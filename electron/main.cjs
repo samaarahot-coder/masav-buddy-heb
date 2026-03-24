@@ -1,8 +1,46 @@
-const { app, BrowserWindow, Menu, shell } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
 const path = require('path');
+const { autoUpdater } = require('electron-updater');
 
 let mainWindow;
 
+// ── Auto-Updater ────────────────────────────────────────
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+
+autoUpdater.on('update-available', (info) => {
+  dialog
+    .showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'עדכון זמין',
+      message: `גרסה חדשה ${info.version} זמינה!\nהאם להוריד ולהתקין?`,
+      buttons: ['עדכן עכשיו', 'אחר כך'],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    .then(({ response }) => {
+      if (response === 0) autoUpdater.downloadUpdate();
+    });
+});
+
+autoUpdater.on('update-downloaded', () => {
+  dialog
+    .showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'העדכון מוכן',
+      message: 'העדכון הורד בהצלחה. האפליקציה תופעל מחדש כדי להתקין.',
+      buttons: ['הפעל מחדש'],
+    })
+    .then(() => {
+      autoUpdater.quitAndInstall();
+    });
+});
+
+autoUpdater.on('error', (err) => {
+  console.log('Auto-update error:', err);
+});
+
+// ── Window ──────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -12,7 +50,7 @@ function createWindow() {
     title: 'טרומבון - ניהול גביות מס״ב',
     icon: path.join(__dirname, '..', 'public', 'favicon.ico'),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -20,20 +58,16 @@ function createWindow() {
     backgroundColor: '#f8fafc',
   });
 
-  // Graceful show
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-  });
+  mainWindow.once('ready-to-show', () => mainWindow.show());
 
-  // Load the Vite dev server in development, or the built files in production
   if (process.env.ELECTRON_DEV) {
     mainWindow.loadURL('http://localhost:8080');
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    autoUpdater.checkForUpdates().catch(() => {});
   }
 
-  // Open external links in the default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http')) {
       shell.openExternal(url);
@@ -42,18 +76,17 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// Build a simple Hebrew menu
+// ── Menu ────────────────────────────────────────────────
 function createMenu() {
   const template = [
     {
       label: 'טרומבון',
       submenu: [
         { label: 'אודות טרומבון', role: 'about' },
+        { label: 'בדוק עדכונים', click: () => autoUpdater.checkForUpdates() },
         { type: 'separator' },
         { label: 'יציאה', accelerator: 'CmdOrCtrl+Q', click: () => app.quit() },
       ],
@@ -81,14 +114,12 @@ function createMenu() {
       ],
     },
   ];
-
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 app.whenReady().then(() => {
   createMenu();
   createWindow();
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
