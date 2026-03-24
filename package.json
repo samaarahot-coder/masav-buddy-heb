@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:8080 && cross-env ELECTRON_DEV=1 electron .\"",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:8080 && cross-env ELECTRON_DEV=1 electron .\"",
     "electron:build": "vite build && electron-builder --win",
     "electron:build:dir": "vite build && electron-builder --win --dir"
   },
