@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "טרומבון - מערכת ניהול גביות מס״ב",
   "author": "SA מערכות",
-  "main": "electron/main.js",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,7 +31,12 @@
     ],
     "win": {
       "target": ["nsis"],
-      "icon": "public/favicon.ico"
+      "icon": "public/favicon.ico",
+      "publish": [{
+        "provider": "github",
+        "owner": "simhaau",
+        "repo": "trombon-app"
+      }]
     },
     "nsis": {
       "oneClick": false,
@@ -41,7 +46,12 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "טרומבון"
-    }
+    },
+    "publish": [{
+      "provider": "github",
+      "owner": "simhaau",
+      "repo": "trombon-app"
+    }]
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -79,6 +89,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
     "dexie": "^4.3.0",
+    "electron-updater": "^6.8.3",
     "embla-carousel-react": "^8.6.0",
     "file-saver": "^2.0.5",
     "input-otp": "^1.4.2",
